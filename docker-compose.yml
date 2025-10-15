@@ -1,0 +1,74 @@
+services:
+  bot:
+    build: .
+    image: adb-upgrade-bot
+    container_name: adb-upgrade-bot
+    stdin_open: true
+    tty: true
+    environment:
+      DEVICE: "host.docker.internal:5565"
+
+      OVERLAY_USE_ABS: "1"
+      OVERLAY_X1: "720"   # ขยับทีละ 5–10 px ก็พอ
+      OVERLAY_Y1: "170"
+      OVERLAY_W:  "560"
+      OVERLAY_H:  "320"
+
+      SAVE_SCREENCAP: "0"
+      CACHE_DIR: "/app/cache"
+      DEBUG_DIR: "/app/cache/debug"
+      CONFIG_FILE: "/app/cache/debug/runtime_config.json"   # << จุดนี้สำคัญ
+      SCREENCAP_PREFIX: "adb"
+      SCREENCAP_KEEP: "120"
+
+      # ── ช่องอัปเกรด (absolute) ──
+      USE_ABS_SLOT_CENTER: "1"
+      SLOT_CENTER_X: "1059"
+      SLOT_CENTER_Y: "408"
+      SLOT_ROI_W:  "90"
+      SLOT_ROI_H:  "90"
+
+      # ── ปุ่มใส่ลง (ฐานชิ้นที่ 1) + หน่วงก่อนกด ──
+      INSERT_BASE_X: "582"
+      INSERT_BASE_Y: "610"
+      PRE_INSERT_DELAY: "0.8"
+
+      # ── ปุ่มอัปเกรด ──
+      UPGRADE_BTN_X: "844"
+      UPGRADE_BTN_Y: "626"
+
+      # ── ตำแหน่งไอเทม 6 ช่อง ──
+      ITEM_POSITIONS: "[(285,170),(345,170),(405,170),(465,170),(525,170),(585,170)]"
+
+      # ── รูดถาดหลังครบ 6 ชิ้น ──
+      TRAY_SWIPE_X: "585"
+      TRAY_SWIPE_Y: "225"
+      TRAY_SWIPE_DY: "-85"
+      TRAY_SWIPE_MS: "800"
+
+      # ── ROI overlay ล้มเหลว/สำเร็จ ──
+      FAIL_ROI_W: "420"
+      FAIL_ROI_H: "220"
+      FAIL_CHECK_MS: "900"
+
+      # ── จังหวะเวลา ──
+      CLICK_DELAY_MIN: "0.15"
+      CLICK_DELAY_MAX: "0.30"
+      UPGRADE_COOLDOWN_MIN: "0.90"
+      UPGRADE_COOLDOWN_MAX: "1.40"
+      FAIL_RETRY_DELAY_SEC: "1.5"
+
+      # ── thresholds (ถ้าต้องจูนค่อยแก้) ──
+      CONF_SLOT_EMPTY_THR: "0.85"
+      CONF_SLOT_EMPTY_UNSURE: "0.75"
+      CONF_PLUS5_THR: "0.83"
+      CONF_FAIL_THR: "0.80"
+      CONF_SUCCESS_THR: "0.80"
+
+      DEBUG: "0"   # ตั้งเป็น "1" ชั่วคราวถ้าต้องการรูป debug
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./templates:/app/templates:ro
+      - ./cache:/app/cache         # << เมานต์โฟลเดอร์ cache ออกมาที่โฮสต์
+    restart: unless-stopped
