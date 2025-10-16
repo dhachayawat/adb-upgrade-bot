@@ -1,3 +1,4 @@
+# app/cv_utils.py
 import os
 import time
 import cv2
@@ -13,18 +14,47 @@ def screencap_bgr(save_tag: str | None = None):
     """
     ดึงภาพจาก ADB แล้วคืนเป็นภาพ BGR (numpy.ndarray).
     รองรับได้ทั้ง:
-      - ADB.screencap_bgr()  -> ndarray (BGR)
-      - ADB.screencap()      -> bytes (PNG) หรือ ndarray (BGR)
+      - ADB.screencap_bgr(...) -> ndarray (BGR)
+      - ADB.screencap(...)     -> bytes (PNG) หรือ ndarray (BGR)
+    และรองรับพารามิเตอร์แบบ save_tag (บันทึกไฟล์ดีบักเป็นชื่อ {prefix}_{tag}_ts.png)
     """
+
+    # เตรียม path สำหรับบันทึกกรณีต้องเซฟ
+    save_path = None
+    if save_tag and C.SAVE_SCREENCAP:
+        os.makedirs(C.DEBUG_DIR, exist_ok=True)
+        save_path = os.path.join(
+            C.DEBUG_DIR,
+            f"{C.SCREENCAP_PREFIX}_{save_tag}_{time.strftime('%Y%m%d-%H%M%S')}.png",
+        )
+
     img = None
 
     # 1) ถ้ามีฟังก์ชันชื่อ screencap_bgr ใช้อันนี้ก่อน
     if hasattr(ADB, "screencap_bgr"):
-        img = ADB.screencap_bgr(save_tag=save_tag)
+        try:
+            # พยายามส่ง save_tag ถ้าฟังก์ชันรองรับ
+            img = ADB.screencap_bgr(save_tag=save_tag)
+        except TypeError:
+            # บางอิมพลีเมนต์อาจไม่มีอาร์กิวเมนต์ save_tag
+            img = ADB.screencap_bgr()
 
     # 2) fallback: มีแค่ screencap
     elif hasattr(ADB, "screencap"):
-        data = ADB.screencap(save_tag=save_tag)
+        data = None
+        try:
+            # พยายามเรียกด้วย save_path (ตาม adb.py ปัจจุบัน)
+            if save_path is not None:
+                data = ADB.screencap(save_path=save_path)
+            else:
+                # ไม่เซฟ ก็เรียกปกติ
+                data = ADB.screencap()
+        except TypeError:
+            # ถ้าอิมพลีเมนต์ไม่รองรับ save_path แบบ named argument
+            data = ADB.screencap()
+            # เดี๋ยวเราค่อยบันทึกเองด้านล่าง
+
+        # แปลงผลลัพธ์เป็นภาพ BGR
         if isinstance(data, bytes):
             # data เป็น PNG bytes -> แปลงเป็น BGR
             arr = np.frombuffer(data, np.uint8)
@@ -36,14 +66,13 @@ def screencap_bgr(save_tag: str | None = None):
     if img is None:
         raise RuntimeError("screencap_bgr(): cannot obtain frame from ADB")
 
-    # บันทึกลงไฟล์เพื่อดีบัก ถ้าตั้งค่าไว้
-    if save_tag and C.SAVE_SCREENCAP:
-        os.makedirs(C.DEBUG_DIR, exist_ok=True)
-        path = os.path.join(
-            C.DEBUG_DIR,
-            f"{C.SCREENCAP_PREFIX}_{save_tag}_{time.strftime('%Y%m%d-%H%M%S')}.png",
-        )
-        cv2.imwrite(path, img)
+    # ถ้าตั้งใจจะบันทึก แต่ adb ไม่ได้เซฟให้เราไว้ (หรือเราอยากบังคับเซฟเพิ่มอีกไฟล์)
+    if save_path is not None and img is not None:
+        try:
+            cv2.imwrite(save_path, img)
+        except Exception:
+            # ถ้าเขียนไฟล์ไม่ได้ก็ปล่อยผ่าน (ไม่ทำให้ล้ม)
+            pass
 
     return img
 

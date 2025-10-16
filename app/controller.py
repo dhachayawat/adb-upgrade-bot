@@ -1,66 +1,58 @@
 # app/controller.py
 import threading
-import time
-import os
-import cv2
-
-from app import cv_utils as CV
 from app import config as C
 from app.worker import worker_loop
-from app.calibrate import calibrate_once
-from app import status as ST
+from app import rtlog as LOG
 
-_lock = threading.Lock()
+_state_lock = threading.Lock()
+_worker_th: threading.Thread | None = None
 _stop_ev = threading.Event()
-_thread = None
-_running = False
+_pause_ev = threading.Event()
 
-def is_running():
-    with _lock:
-        return _running and _thread is not None and _thread.is_alive()
+def _is_alive():
+    global _worker_th
+    return _worker_th is not None and _worker_th.is_alive()
+
+def status():
+    with _state_lock:
+        s = "running" if _is_alive() else "stopped"
+        p = _pause_ev.is_set()
+        return {"state": s, "paused": p}
 
 def start():
-    global _thread, _running
-    with _lock:
-        if _running and _thread and _thread.is_alive():
-            return False, "Already running"
+    global _worker_th, _stop_ev, _pause_ev
+    with _state_lock:
+        if _is_alive():
+            return True, "Bot already running"
         _stop_ev.clear()
-        _thread = threading.Thread(target=worker_loop, args=(_stop_ev,), daemon=True)
-        _thread.start()
-        _running = True
-        ST.set_running(True)
-        ST.log("Bot started", "ok")
+        _pause_ev.clear()
+        _worker_th = threading.Thread(
+            target=worker_loop,
+            kwargs={"stop_ev": _stop_ev, "pause_ev": _pause_ev},
+            daemon=True
+        )
+        _worker_th.start()
+        LOG.tee("BOT STARTED")
         return True, "Started"
 
 def stop():
-    global _thread, _running
-    with _lock:
-        if not _running:
-            return False, "Not running"
+    global _worker_th, _stop_ev
+    with _state_lock:
+        if not _is_alive():
+            return True, "Bot already stopped"
         _stop_ev.set()
-        if _thread and _thread.is_alive():
-            _thread.join(timeout=2.0)
-        _running = False
-        ST.set_running(False)
-        ST.log("Bot stopped", "warn")
-        return True, "Stopped"
+    LOG.tee("Stopping bot ...")
+    return True, "Stopping"
 
-def snapshot(tag="web"):
-    os.makedirs(C.CACHE_DIR, exist_ok=True)
-    img = CV.screencap_bgr(save_tag=tag)
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    out_path = os.path.join(C.CACHE_DIR, f"snap_{tag}_{ts}.png")
-    cv2.imwrite(out_path, img)
-    ST.log(f"Screenshot saved: {out_path}", "ok")
-    return out_path, (img.shape[1], img.shape[0])
-
-def preview():
-    out_name = "calib_preview.png"
-    out_dir = getattr(C, "DEBUG_DIR", os.path.join(C.CACHE_DIR, "debug"))
-    path = os.path.join(out_dir, out_name)
-    calibrate_once(out_name, tag="preview")
-    ST.log(f"Preview saved: {path}", "ok")
-    return path
-
-def get_status():
-    return ST.snapshot()
+def pause_resume():
+    with _state_lock:
+        if not _is_alive():
+            return False, "Bot is not running"
+        if _pause_ev.is_set():
+            _pause_ev.clear()
+            LOG.tee("RESUME")
+            return True, "Resumed"
+        else:
+            _pause_ev.set()
+            LOG.tee("PAUSE")
+            return True, "Paused"

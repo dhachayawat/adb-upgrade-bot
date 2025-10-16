@@ -17,7 +17,7 @@ services:
       SAVE_SCREENCAP: "0"
       CACHE_DIR: "/app/cache"
       DEBUG_DIR: "/app/cache/debug"
-      CONFIG_FILE: "/app/cache/debug/runtime_config.json"   # << จุดนี้สำคัญ
+      CONFIG_FILE: "/app/data/config/config.json"   # << จุดนี้สำคัญ
       SCREENCAP_PREFIX: "adb"
       SCREENCAP_KEEP: "120"
 
@@ -71,4 +71,5 @@ services:
     volumes:
       - ./templates:/app/templates:ro
       - ./cache:/app/cache         # << เมานต์โฟลเดอร์ cache ออกมาที่โฮสต์
+      - ./data:/app/data            # << ใหม่: เก็บไฟล์คอนฟิกถาวร /app/data/config/config.json
     restart: unless-stopped
