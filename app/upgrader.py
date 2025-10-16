@@ -1,323 +1,325 @@
 # app/upgrader.py
-# ลอจิกใหม่ (ตามสเปคผู้ใช้):
-# 1) แตะไอเทม -> OCR ที่ slot_status เพื่ออ่านรูปแบบ [n] (เช่น [1]..[6]) *ก่อนใส่ลง*
-# 2) ถ้าไม่เจอเลข หรือเลข <=4 -> ทำ "ใส่ลง" แล้วเข้าสู่โหมดอัปเกรด
-#    ถ้าเลข >=5 -> ข้ามไอเทม
-# 3) โหมดอัปเกรด: นับจำนวน "สำเร็จ" ให้ครบจนถึง TARGET_LEVEL (ปกติ +5)
-#    - หลังแต่ละคลิก "อัปเกรด" ตรวจผลจาก overlay_abs โดยลำดับ:
-#        3.1 OCR คำ "สำเร็จ"/"ล้มเหลว" (ไทย) ใน ROI
-#        3.2 เทมเพลต success.png / fail.png
-#        3.3 ฮิวริสติกโทนสี: ฟ้า/ขาว => success, ส้ม/แดง => fail
-#    - ถ้า fail และระดับปัจจุบัน (base + successes) >= 4 -> ถือว่าแตก -> ข้ามไอเทม
-# 4) ก่อนตรวจช่อง/สถานะหลัง "ใส่ลง" ให้หน่วง 0.5 วินาที
-
+# อัปเกรดแบบ “กันพลาด +6” + ฝัง thresholds จากไฟล์วิเคราะห์สี
 import os
-import re
 import time
-import numpy as np
-import cv2
+from typing import Optional, Tuple
 
-try:
-    import pytesseract
-    HAVE_TESS = True
-except Exception:
-    HAVE_TESS = False
+import cv2
+import numpy as np
 
 from app import config as C
 from app import adb as ADB
 from app import cv_utils as CV
 from app import rtlog as LOG
 
-# ======== REGEX ========
-BRACKET_NUM_RE = re.compile(r"\[\s*(\d{1,2})\s*\]")  # จับเลขในวงเล็บเหลี่ยม [n]
+# ===================== โหลด Thresholds จากไฟล์วิเคราะห์ (ถ้ามี) =====================
+SUGGEST_PATH = os.getenv(
+    "OVERLAY_SUGGEST_FILE",
+    "/data/analysis_out/overlay_threshold_suggestion.json"
+)
 
-# ======== I/O จอ ========
-def _grab():
-    """ดึงภาพหน้าจอจาก ADB เป็น BGR ndarray"""
-    return CV.screencap_bgr()
+# ค่ามาตรฐาน (fallback) เดิม
+DEFAULT_BLUE_MIN      = 0.03   # ต้องมีฟ้าขั้นต่ำ
+DEFAULT_SUCC_SUM_MIN  = 0.08   # (blue+white) ขั้นต่ำ
+DEFAULT_RED_MIN       = 0.06   # fail ขั้นต่ำ
 
-def _roi_centered(img, cx, cy, w, h):
-    """crop ROI โดยศูนย์กลาง (cx,cy) และขนาด (w,h)"""
-    x1 = max(0, cx - w//2); y1 = max(0, cy - h//2)
-    x2 = min(img.shape[1], x1 + w); y2 = min(img.shape[0], y1 + h)
-    return img[y1:y2, x1:x2], (x1, y1)
+# จะถูก override ด้วยค่าจากไฟล์ (ถ้ามี)
+TH_BLUE_MIN     = DEFAULT_BLUE_MIN
+TH_SUCC_SUM_MIN = DEFAULT_SUCC_SUM_MIN
+TH_RED_MIN      = DEFAULT_RED_MIN
 
-def _roi_rect(img, r):
-    """crop ROI โดย dict {x1,y1,w,h}"""
-    return img[r["y1"]:r["y1"]+r["h"], r["x1"]:r["x1"]+r["w"]], (r["x1"], r["y1"])
+def _load_color_thresholds():
+    """
+    อ่านไฟล์ JSON ที่วิเคราะห์จากคลิปแล้วตั้งค่า threshold อัตโนมัติ
+    เลือก p80 เป็นฐาน (บาลานซ์ระหว่างความไวกับความแม่น) ถ้าไม่มีใช้ default
+    """
+    global TH_BLUE_MIN, TH_SUCC_SUM_MIN, TH_RED_MIN
+    try:
+        import json
+        if not os.path.isfile(SUGGEST_PATH):
+            LOG.tee(f"[thresholds] ไม่มีไฟล์แนะนำ: {SUGGEST_PATH} → ใช้ค่า default")
+            return
+        with open(SUGGEST_PATH, "r", encoding="utf-8") as f:
+            j = json.load(f)
 
-# ======== ช่วย OCR ========
-def _binarize(img_bgr):
-    g = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    g = cv2.GaussianBlur(g, (3,3), 0)
-    thr = cv2.adaptiveThreshold(
-        g, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, 31, 9
-    )
-    return thr
+        b80 = float(j.get("blue_quantiles", {}).get("p80", DEFAULT_BLUE_MIN))
+        w80 = float(j.get("white_quantiles", {}).get("p80", 0.05))
+        r80 = float(j.get("red_quantiles", {}).get("p80", DEFAULT_RED_MIN))
 
-def _ocr_text(gray, psm=7):
-    if not HAVE_TESS:
+        # กติกาง่าย ๆ:
+        # success: (blue+white) > succ_sum  และ blue > blue_min
+        # fail:    red > red_min
+        TH_BLUE_MIN     = max(0.01, min(0.20, b80))         # clamp กันหลุด
+        TH_SUCC_SUM_MIN = max(0.03, min(0.35, b80 + w80))   # รวม b+w
+        TH_RED_MIN      = max(0.03, min(0.35, r80))
+
+        LOG.tee(f"[thresholds] ใช้ค่าจากไฟล์: "
+                f"BLUE_MIN={TH_BLUE_MIN:.3f}, SUCC_SUM_MIN={TH_SUCC_SUM_MIN:.3f}, RED_MIN={TH_RED_MIN:.3f}")
+    except Exception as e:
+        LOG.tee(f"[thresholds] อ่านไฟล์แนะนำไม่สำเร็จ ({e}) → ใช้ค่า default")
+
+# โหลดหนึ่งครั้งตอน import
+_load_color_thresholds()
+
+# ================= OCR ช่วยอ่าน [n] =================
+def _prep_variants(gray: np.ndarray):
+    """สร้างหลายเวอร์ชันภาพเพื่อ OCR แล้ว vote กัน"""
+    out = []
+    out.append(gray)
+    out.append(cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 5
+    ))
+    _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    out.append(th)
+    _, thi = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+    out.append(thi)
+    edges = cv2.Canny(gray, 60, 140)
+    out.append(edges)
+    return out
+
+def _ocr_digits_only(img: np.ndarray) -> str:
+    """OCR ตัวเลข/สัญลักษณ์พื้นฐาน ถ้ามี pytesseract ก็ใช้; ไม่มีให้คืนว่างไป"""
+    try:
+        import pytesseract
+        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789[]+"
+        txt = pytesseract.image_to_string(img, config=cfg) or ""
+        return txt.strip()
+    except Exception:
         return ""
-    cfg = f"--psm {psm}"
-    txt = pytesseract.image_to_string(gray, lang="eng", config=cfg)
-    return (txt or "").strip().replace("\n", " ")
 
-# ======== อ่านระดับ [n] จาก slot_status (ก่อนใส่ลง) ========
-def read_bracket_level_from_status():
-    """
-    อ่านเลขจาก badge/ป้ายสถานะรูปแบบ [n] (1..6) บริเวณ C.SLOT_STATUS_X/Y ขนาด C.SLOT_STATUS_ROI_W/H
-    ใช้ก่อน "ใส่ลง"
-    คืน int | None
-    """
-    img = _grab()
-    w, h = C.SLOT_STATUS_ROI_W, C.SLOT_STATUS_ROI_H
-    roi, (ox,oy) = _roi_centered(img, C.SLOT_STATUS_X, C.SLOT_STATUS_Y, w, h)
-    thr = _binarize(roi)
-    text = _ocr_text(thr, psm=7)
-
-    lvl = None
-    m = BRACKET_NUM_RE.search(text)
+def _extract_bracket_number(s: str) -> Optional[int]:
+    """ดึงตัวเลขรูปแบบ [n] หรือ +n (กัน OCR เพี้ยนเล็กน้อย)"""
+    if not s:
+        return None
+    ss = s.replace(" ", "").replace("S", "5").replace("s", "5")
+    import re
+    m = re.search(r"\[(\d{1,2})\]", ss)
     if m:
         try:
-            lvl = int(m.group(1))
-        except:
-            lvl = None
-
-    LOG.tee(f"[OCR ก่อนใส่ลง] text='{text}' → ระดับในวงเล็บ = {lvl} (roi {ox},{oy},{w}x{h})")
-
-    # debug
-    try:
-        os.makedirs(C.DEBUG_DIR, exist_ok=True)
-        cv2.imwrite(os.path.join(C.DEBUG_DIR, "preinsert_status_roi.png"), roi)
-        cv2.imwrite(os.path.join(C.DEBUG_DIR, "preinsert_status_thr.png"), thr)
-    except Exception:
-        pass
-
-    return lvl
-
-# ======== ตรวจ "ช่องว่าง" (หลังใส่ลง) ========
-def _empty_by_template(crop_bgr):
-    tpl = CV.read_tpl("slot_empty.png")
-    if tpl is None:
-        return (False, 0.0)
-    pt, sc = CV.match_center_multiscale(
-        crop_bgr, tpl, thr=C.CONF_SLOT_EMPTY_THR, scales=(0.9, 1.0, 1.1)
-    )
-    return (pt is not None and sc >= C.CONF_SLOT_EMPTY_THR, float(sc))
-
-def _empty_by_variance(crop_bgr):
-    g = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
-    v = float(np.var(g))
-    edges = cv2.Canny(g, 40, 120)
-    edge_ratio = edges.mean()/255.0
-    return (v < 400.0 and edge_ratio < 0.03)
-
-def is_slot_empty():
-    """
-    ใช้ SLOT_CENTER_X/Y และ SLOT_ROI_W/H ตรวจว่า slot ปัจจุบันว่างหรือไม่
-    - ถ้ามีเทมเพลต slot_empty.png: ใช้เทมเพลตก่อน
-    - ถ้าไม่มี: ใช้ฮิวริสติก variance
-    """
-    img = _grab()
-    w, h = C.SLOT_ROI_W, C.SLOT_ROI_H
-    crop, _ = _roi_centered(img, C.SLOT_CENTER_X, C.SLOT_CENTER_Y, w, h)
-
-    if CV.read_tpl("slot_empty.png") is not None:
-        emp, sc = _empty_by_template(crop)
-        LOG.tee(f"[ตรวจช่อง] ว่าง={emp} (ด้วยเทมเพลต score={sc:.3f})")
-        return emp
-
-    emp = _empty_by_variance(crop)
-    LOG.tee(f"[ตรวจช่อง] ว่าง={emp} (ฮิวริสติก)")
-    return emp
-
-# ======== วิเคราะห์สีสำหรับ overlay animation ========
-def _color_scores_for_overlay(roi_bgr):
-    """
-    คืน (success_score, fail_score) เป็นสัดส่วนพื้นที่ (0..1) ของสีที่เข้าข่าย
-    - success: โทนฟ้า/น้ำเงิน + ขาวสว่าง
-    - fail:    โทนส้ม/แดง
-    """
-    hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-
-    # success: ฟ้า/น้ำเงิน
-    s_h1 = getattr(C, "SUCCESS_H_MIN", 90)
-    s_h2 = getattr(C, "SUCCESS_H_MAX", 140)
-    s_s  = getattr(C, "SUCCESS_S_MIN", 60)
-    s_v  = getattr(C, "SUCCESS_V_MIN", 80)
-    success_blue = cv2.inRange(hsv, (s_h1, s_s, s_v), (s_h2, 255, 255))
-
-    # success: ขาวสว่าง
-    w_s_max = getattr(C, "SUCCESS_WHITE_S_MAX", 40)
-    w_v_min = getattr(C, "SUCCESS_WHITE_V_MIN", 200)
-    success_white = cv2.inRange(hsv, (0, 0, w_v_min), (180, w_s_max, 255))
-
-    success_mask = cv2.bitwise_or(success_blue, success_white)
-
-    # fail: ส้ม
-    f_or_h1 = getattr(C, "FAIL_ORANGE_H_MIN", 10)
-    f_or_h2 = getattr(C, "FAIL_ORANGE_H_MAX", 25)
-    f_s     = getattr(C, "FAIL_S_MIN", 80)
-    f_v     = getattr(C, "FAIL_V_MIN", 80)
-    fail_orange = cv2.inRange(hsv, (f_or_h1, f_s, f_v), (f_or_h2, 255, 255))
-
-    # fail: แดง (สองช่วง hue)
-    f_r1 = cv2.inRange(hsv, (0,   f_s, f_v), (5,   255, 255))
-    f_r2 = cv2.inRange(hsv, (170, f_s, f_v), (180, 255, 255))
-    fail_red = cv2.bitwise_or(f_r1, f_r2)
-
-    fail_mask = cv2.bitwise_or(fail_orange, fail_red)
-
-    area = roi_bgr.shape[0] * roi_bgr.shape[1]
-    if area <= 0:
-        return 0.0, 0.0
-
-    succ_ratio = float(cv2.countNonZero(success_mask)) / float(area)
-    fail_ratio = float(cv2.countNonZero(fail_mask)) / float(area)
-
-    return succ_ratio, fail_ratio
-
-# ======== ตรวจผล overlay_abs ========
-def detect_overlay_result():
-    """
-    คืน 'success' / 'fail' / None
-    ลำดับตรวจ:
-      1) OCR หา 'สำเร็จ' หรือ 'ล้มเหลว'
-      2) เทมเพลต success.png / fail.png
-      3) วิเคราะห์โทนสี (success: ฟ้า/ขาว, fail: ส้ม/แดง)
-    """
-    img = _grab()
-    roi, _ = _roi_rect(img, {
-        "x1": C.OVERLAY_X1, "y1": C.OVERLAY_Y1,
-        "w":  C.OVERLAY_W,  "h":  C.OVERLAY_H
-    })
-    thr = _binarize(roi)
-
-    # (1) OCR ไทย
-    txt = _ocr_text(thr, psm=7)
-    if "สำเร็จ" in txt:
-        LOG.tee("[overlay OCR] พบคำว่า 'สำเร็จ'")
-        return "success"
-    if "ล้มเหลว" in txt:
-        LOG.tee("[overlay OCR] พบคำว่า 'ล้มเหลว'")
-        return "fail"
-
-    # (2) เทมเพลต
-    pt, sc = CV.match_center_multiscale(
-        roi, CV.read_tpl("success.png"),
-        thr=C.CONF_SUCCESS_THR, scales=(0.95, 1.00, 1.05)
-    )
-    if pt:
-        LOG.tee("[overlay TM] จับ 'สำเร็จ' ด้วยเทมเพลต")
-        return "success"
-
-    pt, sc = CV.match_center_multiscale(
-        roi, CV.read_tpl("fail.png"),
-        thr=C.CONF_FAIL_THR, scales=(0.95, 1.00, 1.05)
-    )
-    if pt:
-        LOG.tee("[overlay TM] จับ 'ล้มเหลว' ด้วยเทมเพลต")
-        return "fail"
-
-    # (3) โทนสี
-    succ_ratio, fail_ratio = _color_scores_for_overlay(roi)
-    succ_min = float(getattr(C, "SUCCESS_COLOR_MIN", 0.06))
-    fail_min = float(getattr(C, "FAIL_COLOR_MIN", 0.06))
-
-    LOG.tee(f"[overlay สี] success≈{succ_ratio:.3f}, fail≈{fail_ratio:.3f} (เกณฑ์ {succ_min:.2f}/{fail_min:.2f})")
-
-    succ_hit = succ_ratio >= succ_min
-    fail_hit = fail_ratio >= fail_min
-
-    if succ_hit and not fail_hit:
-        LOG.tee("[overlay สี] ตัดสิน: สำเร็จ (ฟ้า/ขาวเด่น)")
-        return "success"
-    if fail_hit and not succ_hit:
-        LOG.tee("[overlay สี] ตัดสิน: ล้มเหลว (ส้ม/แดงเด่น)")
-        return "fail"
-
-    LOG.tee("[overlay] ยังไม่ชัดเจน (OCR/เทมเพลต/สีไม่เด่น)")
+            return int(m.group(1))
+        except Exception:
+            pass
+    m2 = re.search(r"\+(\d{1,2})", ss)
+    if m2:
+        try:
+            return int(m2.group(1))
+        except Exception:
+            pass
     return None
 
-# ======== วงรอบอัปเกรด: นับ 'สำเร็จ' ให้ถึงเป้า ========
-def upgrade_count_successes(start_level: int | None, target_level: int = None):
+def _roi_slot_status_bgr(frame: np.ndarray) -> np.ndarray:
+    """คืน BGR ROI ของ 'slot_status' ตาม config"""
+    sx, sy = C.SLOT_STATUS_X, C.SLOT_STATUS_Y
+    w, h   = C.SLOT_STATUS_ROI_W, C.SLOT_STATUS_ROI_H
+    x1 = max(0, sx - w//2)
+    y1 = max(0, sy - h//2)
+    x2 = min(frame.shape[1], x1 + w)
+    y2 = min(frame.shape[0], y1 + h)
+    return frame[y1:y2, x1:x2].copy()
+
+def _vote_level_from_roi(roi_bgr: np.ndarray) -> Tuple[Optional[int], str]:
+    """OCR หลายเวอร์ชัน แล้ว vote ระดับ [n]"""
+    if roi_bgr.size == 0:
+        return None, "empty_roi"
+    roi = cv2.resize(roi_bgr, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    variants = _prep_variants(gray)
+
+    votes, texts = {}, []
+    for v in variants:
+        txt = _ocr_digits_only(v)
+        texts.append(txt)
+        n = _extract_bracket_number(txt)
+        if n is not None:
+            votes[n] = votes.get(n, 0) + 1
+
+    if votes:
+        best = sorted(votes.items(), key=lambda kv: (-kv[1], -kv[0]))[0][0]
+        return best, f"vote={votes} texts={texts!r}"
+
+    import re
+    joined = "".join(texts)
+    m = re.search(r"(\d{1,2})", joined)
+    if m:
+        try:
+            return int(m.group(1)), f"heuristic={m.group(1)} texts={texts!r}"
+        except Exception:
+            pass
+    return None, f"no_digits texts={texts!r}"
+
+def read_bracket_level_from_status(retry: int = 2, wait: float = 0.10) -> Optional[int]:
+    """จับภาพหลายครั้ง + vote เพื่ออ่านระดับ [n] ที่ slot_status"""
+    levels, debugs = [], []
+    for i in range(max(1, retry)):
+        img = CV.screencap_bgr()
+        roi = _roi_slot_status_bgr(img)
+        lv, dbg = _vote_level_from_roi(roi)
+        levels.append(lv)
+        debugs.append(dbg)
+        if i < retry - 1:
+            time.sleep(wait)
+    cnt = {}
+    for lv in levels:
+        if lv is None: continue
+        cnt[lv] = cnt.get(lv, 0) + 1
+    if cnt:
+        best = sorted(cnt.items(), key=lambda kv: (-kv[1], -kv[0]))[0][0]
+        LOG.tee(f"[OCR slot_status] levels={levels} -> {best} ({debugs[-1] if debugs else ''})")
+        return best
+    LOG.tee(f"[OCR slot_status] ไม่พบเลข (levels={levels})")
+    return None
+
+# =============== ตรวจผลสำเร็จ/ล้มเหลว จาก overlay ===============
+def _roi_overlay(frame: np.ndarray) -> np.ndarray:
+    x1, y1, w, h = C.OVERLAY_X1, C.OVERLAY_Y1, C.OVERLAY_W, C.OVERLAY_H
+    x2 = min(frame.shape[1], x1 + w)
+    y2 = min(frame.shape[0], y1 + h)
+    return frame[y1:y2, x1:x2].copy()
+
+def _color_ratios(roi_bgr: np.ndarray):
+    hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+    mask_blue  = cv2.inRange(hsv, (90, 40, 80), (130,255,255))
+    mask_white = cv2.inRange(hsv, (0,  0,200), (179, 40,255))
+    mask_r1    = cv2.inRange(hsv, (0, 80, 80), (10, 255,255))
+    mask_r2    = cv2.inRange(hsv, (160,80,80), (179,255,255))
+    blue_ratio  = float((mask_blue  > 0).mean())
+    white_ratio = float((mask_white > 0).mean())
+    red_ratio   = float(((mask_r1>0).mean() + (mask_r2>0).mean()) / 2.0)
+    return blue_ratio, white_ratio, red_ratio
+
+def _detect_success_fail_by_color(roi_bgr: np.ndarray) -> Optional[str]:
     """
-    เริ่มหลังจาก 'ใส่ลง' แล้ว
-    - start_level: ระดับที่อ่านได้จาก [n] ก่อนใส่ลง (None -> ถือเป็น 0)
-    - target_level: เป้าหมาย (ดีฟอลต์ C.TARGET_LEVEL = 5)
-    วน: ตรวจช่องยังไม่ว่าง -> กดอัปเกรด -> ตรวจ overlay -> นับ "สำเร็จ"
-         ถ้า fail และ (base+successes) >= 4 -> แตก -> ข้าม
-    คืน (done:bool, end_level:int, reason:str)
+    ใช้ thresholds ที่โหลดมาจากไฟล์ (หรือ default)
+    success: (blue+white) > TH_SUCC_SUM_MIN และ blue > TH_BLUE_MIN
+    fail:    red > TH_RED_MIN
     """
-    if target_level is None:
-        target_level = getattr(C, "TARGET_LEVEL", 5)
+    if roi_bgr.size == 0:
+        return None
+    b, w, r = _color_ratios(roi_bgr)
+    # LOG.tee(f"[overlay color] b={b:.3f} w={w:.3f} r={r:.3f}")  # เปิดถ้าอยากดูละเอียด
+    if (b + w) > TH_SUCC_SUM_MIN and b > TH_BLUE_MIN:
+        return "success"
+    if r > TH_RED_MIN:
+        return "fail"
+    return None
 
-    base = start_level if (start_level is not None and start_level >= 0) else 0
-    need = max(0, target_level - base)
-    LOG.tee(f"[อัปเกรด] เริ่มที่ระดับ {base} ต้องการ 'สำเร็จ' เพิ่มอีก {need} ครั้ง เพื่อถึง +{target_level}")
+def _detect_success_fail_by_tpl(roi_bgr: np.ndarray) -> Optional[str]:
+    """ถ้ามี template success.png / fail.png ให้ลองจับด้วย template"""
+    try:
+        tpl_succ = CV.read_tpl("success.png")
+        tpl_fail = CV.read_tpl("fail.png")
+        got = []
+        if tpl_succ is not None:
+            pt, sc = CV.match_center_multiscale(roi_bgr, tpl_succ, thr=C.CONF_SUCCESS_THR, save_debug_tag=None)
+            if pt is not None:
+                got.append(("success", sc))
+        if tpl_fail is not None:
+            pt, sc = CV.match_center_multiscale(roi_bgr, tpl_fail, thr=C.CONF_FAIL_THR, save_debug_tag=None)
+            if pt is not None:
+                got.append(("fail", sc))
+        if not got:
+            return None
+        got.sort(key=lambda x: -x[1])
+        return got[0][0]
+    except Exception:
+        return None
 
-    successes = 0
-    start_t = time.time()
+def detect_overlay_success_fail(confirm_twice: bool = True) -> Optional[str]:
+    """
+    อ่านผลสำเร็จ/ล้มเหลวจาก overlay:
+    - ลอง template ก่อน (ถ้ามี) → ไม่ได้ค่อยใช้สี (thresholds ที่โหลด)
+    - ถ้า confirm_twice=True จะจับ 2 เฟรม ห่าง ~120ms ต้องตรงกัน
+    """
+    def snap_once():
+        img = CV.screencap_bgr()
+        roi = _roi_overlay(img)
+        by_tpl = _detect_success_fail_by_tpl(roi)
+        if by_tpl:
+            return by_tpl
+        by_color = _detect_success_fail_by_color(roi)
+        return by_color
 
-    while successes < need:
-        if time.time() - start_t > C.MAX_ITEM_TIME_SEC:
-            LOG.tee("[อัปเกรด] เกินเวลาไอเทมนี้ → ข้าม")
-            return (False, base+successes, "หมดเวลา")
+    r1 = snap_once()
+    if not confirm_twice:
+        return r1
+    time.sleep(0.12)
+    r2 = snap_once()
+    if r1 and r1 == r2:
+        return r1
+    return None  # ไม่แน่ใจ
 
-        # กันเคสแตกเงียบ ๆ ก่อนคลิก
-        if is_slot_empty():
-            LOG.tee("[อัปเกรด] ช่องว่าง (คาดว่าไอเทมสูญหาย) → ข้าม")
-            return (False, base+successes, "แตก")
+# =============== ลูปอัปเกรดแบบนับ “สำเร็จ” ถึงเป้า ===============
+def _click_upgrade():
+    ADB.tap(C.UPGRADE_BTN_X, C.UPGRADE_BTN_Y)
 
-        # คลิกอัปเกรด
-        ADB.tap(C.UPGRADE_BTN_X, C.UPGRADE_BTN_Y)
-        LOG.tee(f"[อัปเกรด] กดอัปเกรด (คืบหน้า: +{base+successes} → +{base+successes+1})")
-        time.sleep(C.POST_UPGRADE_WAIT_SEC)
+def upgrade_count_successes(start_level: Optional[int], target_level: int = 5) -> Tuple[bool, Optional[int], str]:
+    """
+    อัปเกรดโดยนับจำนวน “สำเร็จ” ให้ถึง target_level (เช่น 5)
+    - ก่อนคลิกทุกครั้งจะ re-OCR slot_status: ถ้า >= target → หยุด (กันทะลุ)
+    - หลังคลิกจะรอให้แอนิเมชันทำงาน แล้วตรวจ overlay แบบ double-check
+      จากนั้น re-OCR slot_status อีกครั้งเพื่อรับรองสถานะจริง
+    - unknown หลายเฟรม → รอเพิ่ม/ตรวจซ้ำ แบบระมัดระวัง
+    """
+    t0 = time.time()
+    max_clicks = max(1, C.MAX_UPGRADE_CLICKS_PER_ITEM)
+    end_level = start_level
+    unknown_streak = 0
 
-        # อ่านผล overlay
-        res = detect_overlay_result()
-        if res == "success":
-            successes += 1
-            LOG.tee(f"[อัปเกรด] ผล: สำเร็จ (+1) → ตอนนี้เป็น +{base+successes}")
-            continue
-        elif res == "fail":
-            cur = base + successes
-            if cur >= 4:
-                LOG.tee("[อัปเกรด] ผล: ล้มเหลวที่ระดับ ≥4 → ไอเทมแตก → ข้าม")
-                return (False, cur, "แตก")
-            else:
-                LOG.tee("[อัปเกรด] ผล: ล้มเหลวที่ระดับ <4 → เกมไม่แตก → ลองอัปต่อ")
-                continue
+    now = read_bracket_level_from_status(retry=2)
+    if now is not None and now >= target_level:
+        return True, now, "ถึงเป้าตั้งแต่ต้น"
+
+    for click_idx in range(1, max_clicks + 1):
+        # กันทะลุ: เช็คก่อนคลิก
+        now = read_bracket_level_from_status(retry=2)
+        if now is not None and now >= target_level:
+            return True, now, "ถึงเป้าก่อนคลิกถัดไป"
+
+        LOG.tee(f"[อัปเกรด] คลิกครั้งที่ {click_idx}")
+        _click_upgrade()
+        ADB.sleep_rand(C.CLICK_DELAY_MIN, C.CLICK_DELAY_MAX)
+
+        time.sleep(max(0.2, C.POST_UPGRADE_WAIT_SEC))
+
+        rs = detect_overlay_success_fail(confirm_twice=True)
+        LOG.tee(f"[อัปเดตผล] overlay = {rs}")
+
+        lvl = read_bracket_level_from_status(retry=3)
+        if lvl is not None:
+            end_level = lvl
+
+        if rs == "success":
+            unknown_streak = 0
+            if end_level is not None and end_level >= target_level:
+                return True, end_level, "สำเร็จถึงเป้า"
+        elif rs == "fail":
+            unknown_streak = 0
+            if end_level is not None and end_level >= 4:
+                return False, end_level, "แตก/หาย"
         else:
-            # ยังไม่ชัดเจน → รอเพิ่มแล้วลองตรวจซ้ำ (เผื่ออนิเมชัน)
-            t0 = time.time()
-            got = None
-            while time.time() - t0 < 1.5:
-                time.sleep(0.3)
-                chk = detect_overlay_result()
-                if chk in ("success", "fail"):
-                    got = chk
-                    break
-            if got == "success":
-                successes += 1
-                LOG.tee(f"[อัปเกรด] (ดีเลย์) ผล: สำเร็จ → ขึ้นเป็น +{base+successes}")
-            elif got == "fail":
-                cur = base + successes
-                if cur >= 4:
-                    LOG.tee("[อัปเกรด] (ดีเลย์) ผล: ล้มเหลวที่ระดับ ≥4 → แตก → ข้าม")
-                    return (False, cur, "แตก")
-                else:
-                    LOG.tee("[อัปเกรด] (ดีเลย์) ผล: ล้มเหลวระดับ <4 → ลองต่อ")
-            else:
-                LOG.tee("[อัปเกรด] (ดีเลย์) ยังไม่ชัดเจน → ลองวนต่อ")
+            unknown_streak += 1
+            LOG.tee(f"[อัปเดตผล] ไม่แน่ใจ (unknown_streak={unknown_streak}) → จับภาพซ้ำแบบระวัง")
+            if unknown_streak >= 2:
+                time.sleep(0.25)
+                lvl2 = read_bracket_level_from_status(retry=3)
+                if lvl2 is not None and lvl2 >= target_level:
+                    return True, lvl2, "ไม่แน่ใจแต่ตรวจซ้ำ พบถึงเป้า"
 
-        # กันค้างจำนวนคลิก
-        if successes + base >= target_level:
-            break
-        if successes + base < target_level and getattr(C, "MAX_UPGRADE_CLICKS_PER_ITEM", 60) <= (base + successes):
-            LOG.tee("[อัปเกรด] จำนวนความพยายามเกินขีดจำกัด → ข้าม")
-            return (False, base+successes, "เกินจำนวนคลิก")
+        if (time.time() - t0) > C.MAX_ITEM_TIME_SEC:
+            return False, end_level, "หมดเวลาต่อชิ้น"
+        if click_idx >= max_clicks:
+            return False, end_level, "ครบจำนวนคลิกสูงสุด"
 
-    LOG.tee(f"[อัปเกรด] บรรลุเป้าหมาย +{target_level}")
-    return (True, base+successes, "ครบเป้า")
+        ADB.sleep_rand(C.UPGRADE_COOLDOWN_MIN, C.UPGRADE_COOLDOWN_MAX)
+
+    return False, end_level, "จบลูปโดยเงื่อนไขสำรอง"
+
+# ================= API ระดับสูง (compat เดิม) =================
+def is_plus5(geo=None) -> bool:
+    lvl = read_bracket_level_from_status(retry=3)
+    return bool(lvl is not None and lvl >= 5)
+
+def upgrade_until_plus5_or_break():
+    start = read_bracket_level_from_status(retry=3)
+    done, end_lvl, reason = upgrade_count_successes(start, 5)
+    return done
