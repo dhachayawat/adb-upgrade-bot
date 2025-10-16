@@ -11,9 +11,27 @@ def _pause_wait(pause_ev, stop_ev):
     while pause_ev.is_set() and not stop_ev.is_set():
         time.sleep(0.1)
 
+def _swipe_tray_safe():
+    """
+    ลากถาดตามค่าคอนฟิก (กันพลาด / มี log ชัด)
+    """
+    x = C.TRAY_SWIPE_X
+    y = C.TRAY_SWIPE_Y            # <- ค่าใน config.py
+    dy = C.TRAY_SWIPE_DY
+    ms = C.TRAY_SWIPE_MS
+    y2 = y + dy
+
+    LOG.tee(f"[เลื่อนถาด] swipe ({x},{y}) -> ({x},{y2}) ms={ms}")
+    try:
+        ADB.swipe(x, y, x, y2, ms)
+    except Exception as e:
+        LOG.tee(f"[เลื่อนถาด] ล้มเหลว: {e}")
+
 def worker_loop(stop_ev, pause_ev):
     LOG.tee("เริ่มทำงาน Worker (ลอจิกตรวจ [n] ก่อนใส่ลง)")
     batch_idx = 0
+    target = getattr(C, "TARGET_LEVEL", 5)
+
     while not stop_ev.is_set():
         _pause_wait(pause_ev, stop_ev)
         batch_idx += 1
@@ -36,20 +54,20 @@ def worker_loop(stop_ev, pause_ev):
                 if not ok:
                     LOG.tee("คำเตือน: ใส่ลงไม่สำเร็จ → ข้ามชิ้นนี้")
                     continue
+
                 LOG.tee("ใส่ลงสำเร็จ → หน่วง 0.5 วินาทีก่อนตรวจ/อัป")
                 time.sleep(0.5)
 
-                # 3) อัปเกรดนับ “สำเร็จ” ให้ถึง +5 (หรือตาม C.TARGET_LEVEL)
-                done, end_lvl, reason = upgrade_count_successes(pre_lvl, getattr(C, "TARGET_LEVEL", 5))
+                # 3) อัปเกรดนับ “สำเร็จ” ให้ถึงเป้า (เช่น +5 หรือ TARGET_LEVEL)
+                done, end_lvl, reason = upgrade_count_successes(pre_lvl, target)
                 LOG.tee(f"[ผลชิ้นที่ {i}] สรุป: สำเร็จถึงเป้า={done}, เลเวลสุดท้าย={end_lvl}, เหตุผล='{reason}'")
 
             else:
                 LOG.tee(f"[ก่อนใส่ลง] พบระดับในวงเล็บ = {pre_lvl} (≥5) → ข้ามไปชิ้นถัดไป")
 
-        # ครบ 6 ชิ้นแล้ว: เลื่อนถาด
+        # ครบ 6 ชิ้นแล้ว: เลื่อนถาด (แก้ชื่อคีย์พิมพ์ผิดแล้ว)
         if stop_ev.is_set(): break
-        LOG.tee(f"[เลื่อนถาด] x={C.TRAY_SWIPE_X}, y={C.TRAY_SWIPE_Y}, dY={C.TRAY_SWIPE_DY}, ms={C.TRAY_SWIPE_MS}")
-        ADB.swipe(C.TRAY_SWIPE_X, C.TRAY_SWIPE_Y, C.TRAY_SWIPE_X, C.TRAY_SWIIPE_Y + C.TRAY_SWIPE_DY, C.TRAY_SWIPE_MS)
+        _swipe_tray_safe()
         time.sleep(0.3)
 
     LOG.tee("หยุดทำงาน Worker แล้ว")

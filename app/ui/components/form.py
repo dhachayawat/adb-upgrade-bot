@@ -14,9 +14,9 @@ def render_form() -> str:
     </div>
 
     <div class="d-flex gap-2 mb-3">
-      <button class="btn btn-primary btn-sm" onclick="saveCfg()">Save Config</button>
-      <button class="btn btn-outline-light btn-sm" onclick="undoCfg()">Undo</button>
-      <button class="btn btn-outline-danger btn-sm" onclick="clearCfg()">Clear</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="saveCfg()">Save Config</button>
+      <button type="button" class="btn btn-outline-light btn-sm" onclick="undoCfg()">Undo</button>
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearCfg()">Clear</button>
     </div>
 
     <div class="form-text text-secondary small">
@@ -29,7 +29,9 @@ def render_form() -> str:
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>Advanced</span>
-    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#advWrap" aria-expanded="false" aria-controls="advWrap">
+    <button type="button" class="btn btn-outline-secondary btn-sm"
+            data-bs-toggle="collapse" data-bs-target="#advWrap"
+            aria-expanded="false" aria-controls="advWrap">
       Show / Hide
     </button>
   </div>
@@ -111,7 +113,7 @@ def render_form() -> str:
           <input id="dragToggle" class="form-check-input" type="checkbox" checked>
           <label for="dragToggle" class="form-check-label">Enable drag/resize on image</label>
         </div>
-        <button class="btn btn-outline-light btn-sm" onclick="placeAll()">Preview Overlays</button>
+        <button type="button" class="btn btn-outline-light btn-sm" onclick="placeAll()">Preview Overlays</button>
       </div>
 
     </div>
