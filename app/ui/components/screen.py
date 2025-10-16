@@ -53,22 +53,6 @@ def render_screen() -> str:
   </div>
 </div>
 
-<!-- ===== Runtime Logs (ย้ายมาเหนือ Raw Config) ===== -->
-<div class="card mb-3">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <span>Runtime Logs</span>
-    <div class="d-flex gap-2">
-      <button class="btn btn-outline-light btn-sm" onclick="refreshLogs()">Refresh</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="toggleAutoLog()">Auto</button>
-    </div>
-  </div>
-  <div class="card-body">
-    <pre id="logbox" style="max-height:260px;overflow:auto"></pre>
-    <div class="form-text text-secondary small">* โชว์สถานะหลัง “ใส่ลง”, OCR เลเวล, ผลสำเร็จ/ล้มเหลว, และการอัปเกรด</div>
-  </div>
-</div>
-
-<!-- ===== Raw Config (JSON) ===== -->
 <div class="card">
   <div class="card-header">Raw Config (JSON)</div>
   <div class="card-body">
@@ -87,7 +71,7 @@ const $ = sel => document.querySelector(sel);
 // slot_status ROI size (persisted)
 let STATUS_W = 80, STATUS_H = 80;
 
-// ---------- items grid (inputs อยู่ในฝั่งซ้าย) ----------
+// ---------- items grid ----------
 function fillItemsGrid(items){
   const wrap = $('#items'); if(!wrap) return; wrap.innerHTML = '';
   for(let i=0;i<6;i++){
@@ -287,7 +271,7 @@ function enableDragResize(){
 
     function down(ev, isResize){
       ev.preventDefault();
-      if(isResize) ev.stopPropagation();
+      if(isResize) ev.stopPropagation(); // << สำคัญ: กัน parent move กิน event
       mode = isResize ? 'resize' : 'move';
       const sc = r();
       const rect = el.getBoundingClientRect();
@@ -315,7 +299,9 @@ function enableDragResize(){
       const v = getter(); v.x1=x1; v.y1=y1; v.w=w; v.h=h; setter(v); placeAll();
     }
 
+    // move when dragging box
     el.onmousedown = (e)=>down(e, false);
+    // resize only when dragging handle; stopPropagation กัน move
     if(h) h.onmousedown = (e)=>down(e, true);
   }
 
@@ -323,7 +309,7 @@ function enableDragResize(){
   makeRectDrag('#roi-overlay', ()=>CFG.overlay_abs, v=>CFG.overlay_abs=v);
   makeRectDrag('#roi-insert',  ()=>CFG.insert_roi,  v=>CFG.insert_roi=v);
 
-  // slot roi: move & resize (persisted)
+  // slot roi: move & resize (persisted) — ใช้ makeRectDrag แทนเวอร์ชันแยกเดิม
   (function(){
     const getter = ()=> {
       const [cx,cy]=CFG.slot_center, [sw,sh]=CFG.slot_roi;
@@ -338,13 +324,14 @@ function enableDragResize(){
       if(c) c.value = CFG.slot_roi[0];
       if(d) d.value = CFG.slot_roi[1];
     };
+    // สร้างกล่องชั่วคราวให้ makeRectDrag ใช้ตำแหน่งปัจจุบัน
     const el = document.getElementById('roi-slot');
     if(el){
       makeRectDrag('#roi-slot', getter, setter);
     }
   })();
 
-  // slot_status ROI (move & resize, persisted)
+  // slot_status ROI (move & resize, persisted in CFG.slot_status_roi)
   (function(){
     const el = document.getElementById('roi-slot-status');
     if(!el) return;
@@ -361,11 +348,13 @@ function enableDragResize(){
       const a=$('#slotsx'), b=$('#slotsy'); if(a)a.value=CFG.slot_status[0]; if(b)b.value=CFG.slot_status[1];
     }
 
-    let s={};
+    // move / resize with stopPropagation on handle
+    let mode=null, s={};
     el.onmousedown = (ev)=>{
       ev.preventDefault();
+      mode='move';
       const sc = scaleInfo(); const rect = el.getBoundingClientRect();
-      s = {startX:ev.clientX,startY:ev.clientY,offLeft:sc.offLeft,offTop:sc.offTop,x:rect.left-sc.offLeft,y:rect.top-sc.offTop};
+      s = {startX:ev.clientX,startY:ev.clientY,offLeft:sc.offLeft,offTop:sc.offTop,x:rect.left-sc.offLeft,y:rect.top-sc.offTop,w:rect.width,h:rect.height};
       document.onmousemove = (e)=>{
         const nx = s.x + (e.clientX - s.startX);
         const ny = s.y + (e.clientY - s.startY);
@@ -435,31 +424,8 @@ async function renderShot(force=false){
   img.onload = ()=>{ shotMeta.w=j.w; shotMeta.h=j.h; placeAll(); enableDragResize(); };
   img.src = 'data:image/png;base64,'+j.image_b64;
 }
-
-// ---------- Logs (auto-refresh) ----------
-let autoLog = true, _logTimer=null;
-async function refreshLogs(){
-  try{
-    const r = await fetch('/api/logs');
-    const j = await r.json();
-    const el = document.getElementById('logbox');
-    el.textContent = (j && j.text) ? j.text : '(empty)';
-    el.scrollTop = el.scrollHeight;
-  }catch(e){}
-}
-function toggleAutoLog(){
-  autoLog = !autoLog;
-  if(autoLog){ startAutoLog(); } else { if(_logTimer) clearInterval(_logTimer); }
-}
-function startAutoLog(){
-  if(_logTimer) clearInterval(_logTimer);
-  _logTimer = setInterval(refreshLogs, 1000);
-}
-
-document.addEventListener('DOMContentLoaded', ()=>{
-  fetchCfg();
-  startAutoLog();
-  refreshLogs();
+document.addEventListener('DOMContentLoaded', fetchCfg);
+document.addEventListener('DOMContentLoaded', ()=> {
   const dragToggle = document.getElementById('dragToggle');
   if(dragToggle) dragToggle.addEventListener('change', enableDragResize);
 });

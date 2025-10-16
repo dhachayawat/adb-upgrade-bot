@@ -2,6 +2,7 @@
 from .header import render_header
 from .form import render_form
 from .screen import render_screen
+from .log import render_log
 
 def render_page() -> str:
     return f"""
@@ -41,6 +42,7 @@ def render_page() -> str:
   <div class="row g-3">
     <div class="col-lg-4">
       {render_form()}
+      {render_log()}
     </div>
     <div class="col-lg-8">
       {render_screen()}
