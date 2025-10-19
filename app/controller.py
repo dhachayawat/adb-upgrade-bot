@@ -1,58 +1,76 @@
 # app/controller.py
+# ตัวควบคุมบอท: start/stop/pause/resume + สถานะสำหรับ Web UI
 import threading
+import time
+from typing import Tuple
+
+from app import rtlog as LOG
 from app import config as C
 from app.worker import worker_loop
-from app import rtlog as LOG
 
-_state_lock = threading.Lock()
-_worker_th: threading.Thread | None = None
+# ================== Module state ==================
+_t: threading.Thread | None = None
 _stop_ev = threading.Event()
 _pause_ev = threading.Event()
 
-def _is_alive():
-    global _worker_th
-    return _worker_th is not None and _worker_th.is_alive()
+# ================== Helpers ==================
+def _running() -> bool:
+    return bool(_t and _t.is_alive() and not _stop_ev.is_set())
 
-def status():
-    with _state_lock:
-        s = "running" if _is_alive() else "stopped"
-        p = _pause_ev.is_set()
-        return {"state": s, "paused": p}
+# ================== Public API ==================
+def start() -> Tuple[bool, str]:
+    """เริ่มทำงานบอท (spawn worker thread)"""
+    global _t
+    if _running():
+        return True, "บอทยังทำงานอยู่แล้ว"
 
-def start():
-    global _worker_th, _stop_ev, _pause_ev
-    with _state_lock:
-        if _is_alive():
-            return True, "Bot already running"
-        _stop_ev.clear()
-        _pause_ev.clear()
-        _worker_th = threading.Thread(
-            target=worker_loop,
-            kwargs={"stop_ev": _stop_ev, "pause_ev": _pause_ev},
-            daemon=True
-        )
-        _worker_th.start()
-        LOG.tee("BOT STARTED")
-        return True, "Started"
+    # reload config เผื่อผู้ใช้เพิ่งกด Save จาก UI
+    try:
+        C.reload()
+    except Exception as e:
+        LOG.tee(f"[controller] reload config ล้มเหลว: {e}")
 
-def stop():
-    global _worker_th, _stop_ev
-    with _state_lock:
-        if not _is_alive():
-            return True, "Bot already stopped"
-        _stop_ev.set()
-    LOG.tee("Stopping bot ...")
-    return True, "Stopping"
+    _stop_ev.clear()
+    _pause_ev.clear()
+    _t = threading.Thread(target=worker_loop, args=(_stop_ev, _pause_ev), daemon=True)
+    _t.start()
+    LOG.tee("[controller] เริ่มทำงานบอทแล้ว")
+    return True, "เริ่มทำงานบอทแล้ว"
 
-def pause_resume():
-    with _state_lock:
-        if not _is_alive():
-            return False, "Bot is not running"
-        if _pause_ev.is_set():
-            _pause_ev.clear()
-            LOG.tee("RESUME")
-            return True, "Resumed"
-        else:
-            _pause_ev.set()
-            LOG.tee("PAUSE")
-            return True, "Paused"
+def stop() -> Tuple[bool, str]:
+    """หยุดทำงานบอท (สั่ง stop event แล้ว join เธรด)"""
+    global _t
+    if not _t:
+        return True, "บอทยังไม่ได้เริ่ม"
+    _stop_ev.set()
+    try:
+        _t.join(timeout=3.0)
+    except Exception:
+        pass
+    _t = None
+    LOG.tee("[controller] หยุดทำงานบอทแล้ว")
+    return True, "หยุดทำงานบอทแล้ว"
+
+def pause() -> Tuple[bool, str]:
+    """พักการทำงานชั่วคราว"""
+    if not _running():
+        return False, "บอทยังไม่ทำงาน"
+    _pause_ev.set()
+    LOG.tee("[controller] พักการทำงาน")
+    return True, "พักการทำงาน"
+
+def resume() -> Tuple[bool, str]:
+    """ยกเลิกพัก กลับมาทำงานต่อ"""
+    if not _running():
+        return False, "บอทยังไม่ทำงาน"
+    _pause_ev.clear()
+    LOG.tee("[controller] ทำงานต่อ")
+    return True, "ทำงานต่อ"
+
+def is_running() -> bool:
+    """สถานะกำลังทำงาน (สำหรับ /api/status)"""
+    return _running()
+
+def is_paused() -> bool:
+    """สถานะพักอยู่ (สำหรับ /api/status)"""
+    return _pause_ev.is_set()

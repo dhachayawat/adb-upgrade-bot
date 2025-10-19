@@ -1,26 +1,26 @@
 {
-  "device": "host.docker.internal:5565",
+  "device": "host.docker.internal:5595",
   "slot_center": [
     850,
     327
   ],
   "slot_status": [
-    500,
-    199
+    568,
+    200
   ],
   "slot_roi": [
     57,
     55
   ],
   "slot_status_roi": [
-    447,
-    61
+    473,
+    70
   ],
   "overlay_abs": {
-    "h": 160,
-    "w": 279,
-    "x1": 710,
-    "y1": 237
+    "h": 153,
+    "w": 272,
+    "x1": 716,
+    "y1": 224
   },
   "insert_roi": {
     "h": 132,

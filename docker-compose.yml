@@ -6,7 +6,7 @@ services:
     stdin_open: true
     tty: true
     environment:
-      DEVICE: "host.docker.internal:5565"
+      DEVICE: "host.docker.internal:5595"
 
       OVERLAY_USE_ABS: "1"
       OVERLAY_X1: "720"   # ขยับทีละ 5–10 px ก็พอ

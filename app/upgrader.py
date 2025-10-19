@@ -1,5 +1,5 @@
 # app/upgrader.py
-# อัปเกรดแบบ “กันพลาด +6” + ฝัง thresholds จากไฟล์วิเคราะห์สี
+# อัปเกรดแบบ “กันพลาด +6” + ฝัง thresholds จากไฟล์วิเคราะห์สี + โพลล์ overlay เร็วภายใน 1.5s
 import os
 import time
 from typing import Optional, Tuple
@@ -46,11 +46,8 @@ def _load_color_thresholds():
         w80 = float(j.get("white_quantiles", {}).get("p80", 0.05))
         r80 = float(j.get("red_quantiles", {}).get("p80", DEFAULT_RED_MIN))
 
-        # กติกาง่าย ๆ:
-        # success: (blue+white) > succ_sum  และ blue > blue_min
-        # fail:    red > red_min
-        TH_BLUE_MIN     = max(0.01, min(0.20, b80))         # clamp กันหลุด
-        TH_SUCC_SUM_MIN = max(0.03, min(0.35, b80 + w80))   # รวม b+w
+        TH_BLUE_MIN     = max(0.01, min(0.20, b80))         # clamp
+        TH_SUCC_SUM_MIN = max(0.03, min(0.35, b80 + w80))   # b+w
         TH_RED_MIN      = max(0.03, min(0.35, r80))
 
         LOG.tee(f"[thresholds] ใช้ค่าจากไฟล์: "
@@ -63,7 +60,6 @@ _load_color_thresholds()
 
 # ================= OCR ช่วยอ่าน [n] =================
 def _prep_variants(gray: np.ndarray):
-    """สร้างหลายเวอร์ชันภาพเพื่อ OCR แล้ว vote กัน"""
     out = []
     out.append(gray)
     out.append(cv2.adaptiveThreshold(
@@ -78,7 +74,6 @@ def _prep_variants(gray: np.ndarray):
     return out
 
 def _ocr_digits_only(img: np.ndarray) -> str:
-    """OCR ตัวเลข/สัญลักษณ์พื้นฐาน ถ้ามี pytesseract ก็ใช้; ไม่มีให้คืนว่างไป"""
     try:
         import pytesseract
         cfg = "--psm 7 -c tessedit_char_whitelist=0123456789[]+"
@@ -88,7 +83,6 @@ def _ocr_digits_only(img: np.ndarray) -> str:
         return ""
 
 def _extract_bracket_number(s: str) -> Optional[int]:
-    """ดึงตัวเลขรูปแบบ [n] หรือ +n (กัน OCR เพี้ยนเล็กน้อย)"""
     if not s:
         return None
     ss = s.replace(" ", "").replace("S", "5").replace("s", "5")
@@ -108,7 +102,6 @@ def _extract_bracket_number(s: str) -> Optional[int]:
     return None
 
 def _roi_slot_status_bgr(frame: np.ndarray) -> np.ndarray:
-    """คืน BGR ROI ของ 'slot_status' ตาม config"""
     sx, sy = C.SLOT_STATUS_X, C.SLOT_STATUS_Y
     w, h   = C.SLOT_STATUS_ROI_W, C.SLOT_STATUS_ROI_H
     x1 = max(0, sx - w//2)
@@ -118,7 +111,6 @@ def _roi_slot_status_bgr(frame: np.ndarray) -> np.ndarray:
     return frame[y1:y2, x1:x2].copy()
 
 def _vote_level_from_roi(roi_bgr: np.ndarray) -> Tuple[Optional[int], str]:
-    """OCR หลายเวอร์ชัน แล้ว vote ระดับ [n]"""
     if roi_bgr.size == 0:
         return None, "empty_roi"
     roi = cv2.resize(roi_bgr, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
@@ -148,14 +140,12 @@ def _vote_level_from_roi(roi_bgr: np.ndarray) -> Tuple[Optional[int], str]:
     return None, f"no_digits texts={texts!r}"
 
 def read_bracket_level_from_status(retry: int = 2, wait: float = 0.10) -> Optional[int]:
-    """จับภาพหลายครั้ง + vote เพื่ออ่านระดับ [n] ที่ slot_status"""
     levels, debugs = [], []
     for i in range(max(1, retry)):
         img = CV.screencap_bgr()
         roi = _roi_slot_status_bgr(img)
         lv, dbg = _vote_level_from_roi(roi)
-        levels.append(lv)
-        debugs.append(dbg)
+        levels.append(lv); debugs.append(dbg)
         if i < retry - 1:
             time.sleep(wait)
     cnt = {}
@@ -189,14 +179,12 @@ def _color_ratios(roi_bgr: np.ndarray):
 
 def _detect_success_fail_by_color(roi_bgr: np.ndarray) -> Optional[str]:
     """
-    ใช้ thresholds ที่โหลดมาจากไฟล์ (หรือ default)
     success: (blue+white) > TH_SUCC_SUM_MIN และ blue > TH_BLUE_MIN
     fail:    red > TH_RED_MIN
     """
     if roi_bgr.size == 0:
         return None
     b, w, r = _color_ratios(roi_bgr)
-    # LOG.tee(f"[overlay color] b={b:.3f} w={w:.3f} r={r:.3f}")  # เปิดถ้าอยากดูละเอียด
     if (b + w) > TH_SUCC_SUM_MIN and b > TH_BLUE_MIN:
         return "success"
     if r > TH_RED_MIN:
@@ -204,7 +192,6 @@ def _detect_success_fail_by_color(roi_bgr: np.ndarray) -> Optional[str]:
     return None
 
 def _detect_success_fail_by_tpl(roi_bgr: np.ndarray) -> Optional[str]:
-    """ถ้ามี template success.png / fail.png ให้ลองจับด้วย template"""
     try:
         tpl_succ = CV.read_tpl("success.png")
         tpl_fail = CV.read_tpl("fail.png")
@@ -224,29 +211,65 @@ def _detect_success_fail_by_tpl(roi_bgr: np.ndarray) -> Optional[str]:
     except Exception:
         return None
 
-def detect_overlay_success_fail(confirm_twice: bool = True) -> Optional[str]:
+def _read_overlay_once() -> Optional[str]:
     """
-    อ่านผลสำเร็จ/ล้มเหลวจาก overlay:
-    - ลอง template ก่อน (ถ้ามี) → ไม่ได้ค่อยใช้สี (thresholds ที่โหลด)
-    - ถ้า confirm_twice=True จะจับ 2 เฟรม ห่าง ~120ms ต้องตรงกัน
+    อ่าน overlay หนึ่งครั้ง (เร็วที่สุด):
+    - พยายามจับด้วย template ก่อน
+    - ไม่เจอใช้สีตาม thresholds
     """
-    def snap_once():
-        img = CV.screencap_bgr()
-        roi = _roi_overlay(img)
-        by_tpl = _detect_success_fail_by_tpl(roi)
-        if by_tpl:
-            return by_tpl
-        by_color = _detect_success_fail_by_color(roi)
-        return by_color
+    img = CV.screencap_bgr()
+    roi = _roi_overlay(img)
+    by_tpl = _detect_success_fail_by_tpl(roi)
+    if by_tpl:
+        return by_tpl
+    return _detect_success_fail_by_color(roi)
 
-    r1 = snap_once()
-    if not confirm_twice:
-        return r1
-    time.sleep(0.12)
-    r2 = snap_once()
-    if r1 and r1 == r2:
-        return r1
-    return None  # ไม่แน่ใจ
+# ---- โพลล์ overlay ภายในกรอบเวลา (เริ่มอ่านเร็วหลังคลิก) ----
+OVERLAY_POLL_WINDOW_SEC   = float(os.getenv("OVERLAY_POLL_WINDOW_SEC", "1.5"))
+OVERLAY_POLL_MIN_ATTEMPTS = int(os.getenv("OVERLAY_POLL_MIN_ATTEMPTS", "3"))
+OVERLAY_POLL_MAX_ATTEMPTS = int(os.getenv("OVERLAY_POLL_MAX_ATTEMPTS", "8"))
+OVERLAY_POLL_INTERVAL_MS  = int(os.getenv("OVERLAY_POLL_INTERVAL_MS", "160"))  # 0.16s ต่อช็อต
+
+def wait_overlay_result() -> Optional[str]:
+    """
+    โพลล์ overlay หลังคลิกอัปเกรด:
+    - พยายามอย่างน้อย 3 ครั้งภายใน 1.5s (ปรับได้ผ่าน env)
+    - ต้องได้ผลซ้ำกัน >= 2 ครั้ง (debounce) หรือพบติดกันสองเฟรม
+    - คืน "success"/"fail"/None(ไม่แน่ใจ)
+    """
+    t0 = time.time()
+    attempts = 0
+    seen = {"success":0, "fail":0}
+    last = None; consec = 0
+
+    while True:
+        attempts += 1
+        rs = _read_overlay_once()
+
+        if rs:
+            seen[rs] += 1
+            # consecutive confirm
+            if rs == last:
+                consec += 1
+            else:
+                consec = 1
+                last = rs
+
+            # เงื่อนไขยืนยันผล:
+            if seen[rs] >= 2 or consec >= 2:
+                LOG.tee(f"[overlay] ยืนยันผล '{rs}' (attempts={attempts}, seen={seen}, consec={consec})")
+                return rs
+
+        # ออกจากลูปเมื่อครบหน้าต่างเวลา และยิงอย่างน้อย MIN_ATTEMPTS
+        if (time.time() - t0) >= OVERLAY_POLL_WINDOW_SEC and attempts >= OVERLAY_POLL_MIN_ATTEMPTS:
+            break
+        if attempts >= OVERLAY_POLL_MAX_ATTEMPTS:
+            break
+
+        time.sleep(max(0.05, OVERLAY_POLL_INTERVAL_MS / 1000.0))
+
+    LOG.tee(f"[overlay] ไม่แน่ใจ (attempts={attempts}, seen={seen})")
+    return None
 
 # =============== ลูปอัปเกรดแบบนับ “สำเร็จ” ถึงเป้า ===============
 def _click_upgrade():
@@ -255,35 +278,39 @@ def _click_upgrade():
 def upgrade_count_successes(start_level: Optional[int], target_level: int = 5) -> Tuple[bool, Optional[int], str]:
     """
     อัปเกรดโดยนับจำนวน “สำเร็จ” ให้ถึง target_level (เช่น 5)
-    - ก่อนคลิกทุกครั้งจะ re-OCR slot_status: ถ้า >= target → หยุด (กันทะลุ)
-    - หลังคลิกจะรอให้แอนิเมชันทำงาน แล้วตรวจ overlay แบบ double-check
-      จากนั้น re-OCR slot_status อีกครั้งเพื่อรับรองสถานะจริง
-    - unknown หลายเฟรม → รอเพิ่ม/ตรวจซ้ำ แบบระมัดระวัง
+    ขั้นตอนต่อคลิก:
+      1) กันทะลุ: re-OCR ก่อนคลิก ถ้า >= target → จบ
+      2) คลิกอัปเกรด
+      3) โพลล์ overlay ภายในหน้าต่างเวลา (1.5s) แบบเร็ว
+      4) re-OCR ระดับ [n] จาก slot_status เพื่อรับรองผลจริง
+      5) ตัดสินใจตามกติกา (ถ้า fail และระดับก่อนหน้ามากกว่า/เท่ากับ +4 ให้ถือว่าแตก)
     """
     t0 = time.time()
     max_clicks = max(1, C.MAX_UPGRADE_CLICKS_PER_ITEM)
     end_level = start_level
     unknown_streak = 0
 
+    # guard: ถ้าตั้งต้น >= target แล้ว ให้จบเลย
     now = read_bracket_level_from_status(retry=2)
     if now is not None and now >= target_level:
         return True, now, "ถึงเป้าตั้งแต่ต้น"
 
     for click_idx in range(1, max_clicks + 1):
-        # กันทะลุ: เช็คก่อนคลิก
+        # กันทะลุ: ตรวจซ้ำก่อนคลิก
         now = read_bracket_level_from_status(retry=2)
         if now is not None and now >= target_level:
             return True, now, "ถึงเป้าก่อนคลิกถัดไป"
 
         LOG.tee(f"[อัปเกรด] คลิกครั้งที่ {click_idx}")
         _click_upgrade()
-        ADB.sleep_rand(C.CLICK_DELAY_MIN, C.CLICK_DELAY_MAX)
+        # หน่วงเล็กน้อยให้กราฟิกเริ่ม (สั้นลงเพื่อ “ทัน” แอนิเมชัน)
+        time.sleep(0.08)
 
-        time.sleep(max(0.2, C.POST_UPGRADE_WAIT_SEC))
-
-        rs = detect_overlay_success_fail(confirm_twice=True)
+        # โพลล์ overlay อย่างรวดเร็วใน 1.5s
+        rs = wait_overlay_result()
         LOG.tee(f"[อัปเดตผล] overlay = {rs}")
 
+        # อ่านระดับจริงหลังเอฟเฟกต์จบลงเล็กน้อย
         lvl = read_bracket_level_from_status(retry=3)
         if lvl is not None:
             end_level = lvl
@@ -294,23 +321,29 @@ def upgrade_count_successes(start_level: Optional[int], target_level: int = 5) -
                 return True, end_level, "สำเร็จถึงเป้า"
         elif rs == "fail":
             unknown_streak = 0
-            if end_level is not None and end_level >= 4:
+            # กติกา: ตั้งแต่ +4 ขึ้นไป ถ้า fail ให้ถือว่าแตก/หาย
+            if (end_level is not None and end_level >= 4) or (now is not None and now >= 4):
                 return False, end_level, "แตก/หาย"
+            # ถ้าต่ำกว่า +4 บางเกมไม่แตก ก็วนต่อ (ให้ cooldown สั้น ๆ)
         else:
+            # ไม่แน่ใจ: พยายามอ่านระดับอีกรอบ
             unknown_streak += 1
-            LOG.tee(f"[อัปเดตผล] ไม่แน่ใจ (unknown_streak={unknown_streak}) → จับภาพซ้ำแบบระวัง")
-            if unknown_streak >= 2:
-                time.sleep(0.25)
-                lvl2 = read_bracket_level_from_status(retry=3)
-                if lvl2 is not None and lvl2 >= target_level:
-                    return True, lvl2, "ไม่แน่ใจแต่ตรวจซ้ำ พบถึงเป้า"
+            LOG.tee(f"[อัปเดตผล] ไม่แน่ใจ (unknown_streak={unknown_streak}) → ตรวจระดับซ้ำ")
+            time.sleep(0.12)
+            lvl2 = read_bracket_level_from_status(retry=2)
+            if lvl2 is not None:
+                end_level = lvl2
+                if end_level >= target_level:
+                    return True, end_level, "ไม่แน่ใจแต่ตรวจซ้ำ พบถึงเป้า"
 
+        # เงื่อนไขออกจากลูปต่อชิ้น
         if (time.time() - t0) > C.MAX_ITEM_TIME_SEC:
             return False, end_level, "หมดเวลาต่อชิ้น"
         if click_idx >= max_clicks:
             return False, end_level, "ครบจำนวนคลิกสูงสุด"
 
-        ADB.sleep_rand(C.UPGRADE_COOLDOWN_MIN, C.UPGRADE_COOLDOWN_MAX)
+        # cooldown สั้น ๆ ก่อนคลิกถัดไป
+        ADB.sleep_rand(max(0.20, C.UPGRADE_COOLDOWN_MIN), max(0.50, C.UPGRADE_COOLDOWN_MAX))
 
     return False, end_level, "จบลูปโดยเงื่อนไขสำรอง"
 

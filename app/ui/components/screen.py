@@ -4,11 +4,20 @@ def render_screen() -> str:
 <div class="card mb-3">
   <div class="card-header d-flex align-items-center justify-content-between">
     <span>Screenshot & Config Overlays</span>
-    <div class="d-flex gap-2">
-      <button class="btn btn-secondary btn-sm" onclick="refreshShot()">Refresh</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="snapAndRefresh()">Screenshot</button>
+    <div class="d-flex align-items-center gap-3">
+      <!-- HUD: item/level -->
+      <div class="small text-white-50">
+        <span class="me-2">ชิ้นปัจจุบัน: <span id="hud-item" class="text-white">-</span></span>
+        <span class="me-2">เลเวล: <span id="hud-level" class="text-white">-</span></span>
+        <span>เป้าหมาย: <span id="hud-target" class="text-white">+5</span></span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary btn-sm" onclick="refreshShot()">Refresh</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="snapAndRefresh()">Screenshot</button>
+      </div>
     </div>
   </div>
+
   <div class="card-body">
     <div id="stage" class="img-stage">
       <img id="shotimg" class="img-fluid" />
@@ -53,6 +62,7 @@ def render_screen() -> str:
   </div>
 </div>
 
+<!-- Raw Config (JSON) -->
 <div class="card">
   <div class="card-header">Raw Config (JSON)</div>
   <div class="card-body">
@@ -71,7 +81,7 @@ const $ = sel => document.querySelector(sel);
 // slot_status ROI size (persisted)
 let STATUS_W = 80, STATUS_H = 80;
 
-// ---------- items grid ----------
+// ---------- items grid (inputs อยู่ในฝั่งซ้าย) ----------
 function fillItemsGrid(items){
   const wrap = $('#items'); if(!wrap) return; wrap.innerHTML = '';
   for(let i=0;i<6;i++){
@@ -239,7 +249,6 @@ function placeAll(){
     line.style.top    = (Math.min(swStart.y, swEnd.y) * r.sy) + 'px';
     line.style.height = (Math.abs(cfg.swipe.dy) * r.sy) + 'px';
   }
-
   placePt('#pt-swipe', swStart.x, swStart.y);
   const h = $('#pt-swipe-handle');
   if(h){
@@ -271,7 +280,7 @@ function enableDragResize(){
 
     function down(ev, isResize){
       ev.preventDefault();
-      if(isResize) ev.stopPropagation(); // << สำคัญ: กัน parent move กิน event
+      if(isResize) ev.stopPropagation(); // กัน parent move กิน event
       mode = isResize ? 'resize' : 'move';
       const sc = r();
       const rect = el.getBoundingClientRect();
@@ -299,9 +308,7 @@ function enableDragResize(){
       const v = getter(); v.x1=x1; v.y1=y1; v.w=w; v.h=h; setter(v); placeAll();
     }
 
-    // move when dragging box
     el.onmousedown = (e)=>down(e, false);
-    // resize only when dragging handle; stopPropagation กัน move
     if(h) h.onmousedown = (e)=>down(e, true);
   }
 
@@ -309,7 +316,7 @@ function enableDragResize(){
   makeRectDrag('#roi-overlay', ()=>CFG.overlay_abs, v=>CFG.overlay_abs=v);
   makeRectDrag('#roi-insert',  ()=>CFG.insert_roi,  v=>CFG.insert_roi=v);
 
-  // slot roi: move & resize (persisted) — ใช้ makeRectDrag แทนเวอร์ชันแยกเดิม
+  // slot roi (persisted)
   (function(){
     const getter = ()=> {
       const [cx,cy]=CFG.slot_center, [sw,sh]=CFG.slot_roi;
@@ -324,11 +331,8 @@ function enableDragResize(){
       if(c) c.value = CFG.slot_roi[0];
       if(d) d.value = CFG.slot_roi[1];
     };
-    // สร้างกล่องชั่วคราวให้ makeRectDrag ใช้ตำแหน่งปัจจุบัน
     const el = document.getElementById('roi-slot');
-    if(el){
-      makeRectDrag('#roi-slot', getter, setter);
-    }
+    if(el){ makeRectDrag('#roi-slot', getter, setter); }
   })();
 
   // slot_status ROI (move & resize, persisted in CFG.slot_status_roi)
@@ -337,10 +341,6 @@ function enableDragResize(){
     if(!el) return;
     const h  = el.querySelector('.handle');
 
-    function boxInfo(){
-      const [sx,sy]=CFG.slot_status; const w=STATUS_W, h=STATUS_H;
-      return {x1:sx-Math.floor(w/2), y1:sy-Math.floor(h/2), w, h};
-    }
     function applyBox(v){
       STATUS_W=v.w; STATUS_H=v.h;
       CFG.slot_status = [ v.x1 + Math.floor(v.w/2), v.y1 + Math.floor(v.h/2) ];
@@ -348,11 +348,9 @@ function enableDragResize(){
       const a=$('#slotsx'), b=$('#slotsy'); if(a)a.value=CFG.slot_status[0]; if(b)b.value=CFG.slot_status[1];
     }
 
-    // move / resize with stopPropagation on handle
     let mode=null, s={};
     el.onmousedown = (ev)=>{
-      ev.preventDefault();
-      mode='move';
+      ev.preventDefault(); mode='move';
       const sc = scaleInfo(); const rect = el.getBoundingClientRect();
       s = {startX:ev.clientX,startY:ev.clientY,offLeft:sc.offLeft,offTop:sc.offTop,x:rect.left-sc.offLeft,y:rect.top-sc.offTop,w:rect.width,h:rect.height};
       document.onmousemove = (e)=>{
@@ -372,7 +370,7 @@ function enableDragResize(){
     if(h) h.onmousedown = (ev)=>{
       ev.preventDefault(); ev.stopPropagation();
       const sc = scaleInfo(); const rect = el.getBoundingClientRect();
-      s = {startX:ev.clientX,startY:ev.clientY, w:rect.width,h:rect.height, offLeft:sc.offLeft, offTop:sc.offTop, left:rect.left, top:rect.top};
+      s = {startX:ev.clientX,startY:ev.clientY, w:rect.width,h:rect.height, offLeft:sc.offLeft, offTop:sc.offTop};
       document.onmousemove = (e)=>{
         const nw = Math.max(10, s.w + (e.clientX - s.startX));
         const nh = Math.max(10, s.h + (e.clientY - s.startY));
@@ -424,8 +422,29 @@ async function renderShot(force=false){
   img.onload = ()=>{ shotMeta.w=j.w; shotMeta.h=j.h; placeAll(); enableDragResize(); };
   img.src = 'data:image/png;base64,'+j.image_b64;
 }
-document.addEventListener('DOMContentLoaded', fetchCfg);
-document.addEventListener('DOMContentLoaded', ()=> {
+
+// ---------- HUD: poll /api/status เพื่อโชว์ “ชิ้นปัจจุบัน/เลเวล/เป้าหมาย” ----------
+let _hudTimer = null;
+async function refreshHUD(){
+  try{
+    const r = await fetch('/api/status'); const j = await r.json();
+    if(!j || !j.ok) return;
+    // แหล่งข้อมูลที่ฝั่ง server ควรเติม เช่น current_item_index, current_item_level, target_level
+    $('#hud-item').textContent  = (j.current_item_index != null) ? ('#'+(j.current_item_index)) : '-';
+    $('#hud-level').textContent = (j.current_item_level != null) ? ('+'+j.current_item_level) : '-';
+    $('#hud-target').textContent= (j.target_level != null) ? ('+'+j.target_level) : '+5';
+  }catch(e){}
+}
+function startHUD(){
+  if(_hudTimer) clearInterval(_hudTimer);
+  _hudTimer = setInterval(refreshHUD, 1000);
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  fetchCfg();
+  // เปิด HUD
+  startHUD(); refreshHUD();
+
   const dragToggle = document.getElementById('dragToggle');
   if(dragToggle) dragToggle.addEventListener('change', enableDragResize);
 });
