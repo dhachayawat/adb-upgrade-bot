@@ -1,0 +1,16 @@
+{
+  "devices": [
+    {
+      "id": "d1",
+      "name": "ดาบ100",
+      "device": "host.docker.internal:5565",
+      "target_level": 5
+    },
+    {
+      "id": "d2",
+      "name": "ดาบ121",
+      "device": "host.docker.internal:5595",
+      "target_level": 5
+    }
+  ]
+}

@@ -3,8 +3,7 @@ services:
     build: .
     image: adb-upgrade-bot
     container_name: adb-upgrade-bot
-    stdin_open: true
-    tty: true
+
     environment:
       DEVICE: "host.docker.internal:5565"
 
@@ -72,4 +71,5 @@ services:
       - ./templates:/app/templates:ro
       - ./cache:/app/cache         # << เมานต์โฟลเดอร์ cache ออกมาที่โฮสต์
       - ./data:/app/data            # << ใหม่: เก็บไฟล์คอนฟิกถาวร /app/data/config/config.json
+      - ./logs:/app/logs
     restart: unless-stopped

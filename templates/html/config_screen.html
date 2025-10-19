@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  /* Overlay styles (ปรับจาก screen.py เดิมให้เข้ากับ Bootstrap) */
+  .img-stage { position: relative; background:#111; border-radius:.5rem; overflow:hidden; }
+  .img-stage img { display:block; max-width:100%; height:auto; }
+  .roi { position:absolute; border:2px dashed; border-radius:.5rem; pointer-events:auto; }
+  .roi .label { position:absolute; top:-22px; left:0; font-size:.75rem; background:rgba(0,0,0,.7); color:#fff; padding:.1rem .4rem; border-radius:.35rem; }
+  .roi .handle { position:absolute; right:-8px; bottom:-8px; width:16px; height:16px; border-radius:50%; background:#000; border:2px solid #fff; cursor:nwse-resize; }
+  .pt { position:absolute; width:10px; height:10px; border-radius:50%; background:#e5e7eb; border:2px solid #111; transform:translate(-50%,-50%); }
+  .pt.red { background:#ef4444; }
+  .pt.yellow { background:#fbbf24; }
+  .pt.cyan { background:#22d3ee; }
+  .sw-line { position:absolute; width:2px; background:rgba(255,255,255,.6); }
+  .sw-handle { position:absolute; width:14px; height:14px; border:2px solid #fff; background:#0ea5e9; border-radius:4px; transform:translate(-50%,-50%); cursor:ns-resize; }
+  pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <a href="/" class="btn btn-link p-0">&larr; Back</a>
+    <h3 class="m-0 mt-2">Config Screen</h3>
+    <div class="text-muted small">แก้พิกัด/ROI ด้วยการลากกรอบ/จุด แล้วกด Save</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/legacy" target="_top">Legacy (iframe)</a>
+  </div>
+</div>
+
+<div class="card mb-3 shadow-sm">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label small">Device</label>
+        <select id="deviceSel" class="form-select form-select-sm"></select>
+        <div class="form-text">ใช้สำหรับถ่ายสกรีน (ค่าคอนฟิกใช้ร่วมทุกอุปกรณ์)</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" id="dragToggle" checked>
+          <label class="form-check-label" for="dragToggle">Enable drag/resize overlays</label>
+        </div>
+      </div>
+      <div class="col-12 col-md-5 text-end">
+        <div class="btn-group">
+          <button class="btn btn-outline-secondary btn-sm" onclick="refreshShot()">Refresh</button>
+          <button class="btn btn-outline-primary btn-sm" onclick="snapAndRefresh()">Screenshot</button>
+          <button class="btn btn-success btn-sm" onclick="saveCfg()">Save</button>
+          <button class="btn btn-warning btn-sm" onclick="undoCfg()">Undo</button>
+          <button class="btn btn-danger btn-sm" onclick="clearCfg()">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3 shadow-sm">
+  <div class="card-body">
+    <div id="stage" class="img-stage">
+      <img id="shotimg" class="img-fluid" alt="screenshot"/>
+
+      <!-- overlay_abs -->
+      <div id="roi-overlay" class="roi" style="border-color:#ff7eb6">
+        <div class="label">overlay_abs</div><div class="handle"></div>
+      </div>
+      <!-- insert_roi -->
+      <div id="roi-insert" class="roi" style="border-color:#ffb347">
+        <div class="label">insert_roi</div><div class="handle"></div>
+      </div>
+      <!-- slot roi (center + size) -->
+      <div id="roi-slot" class="roi" style="border-color:#34d399">
+        <div class="label">slot_roi</div><div class="handle"></div>
+      </div>
+      <!-- slot_status ROI -->
+      <div id="roi-slot-status" class="roi" style="border-color:#39c0ff">
+        <div class="label">slot_status ROI</div><div class="handle"></div>
+      </div>
+
+      <!-- points -->
+      <div id="pt-slot-center" class="pt yellow" title="slot_center"></div>
+      <div id="pt-slot-status" class="pt cyan"   title="slot_status"></div>
+      <div id="pt-upg" class="pt red" title="upgrade_btn"></div>
+      <div id="pt-item-1" class="pt" title="item #1"></div>
+      <div id="pt-item-2" class="pt" title="item #2"></div>
+      <div id="pt-item-3" class="pt" title="item #3"></div>
+      <div id="pt-item-4" class="pt" title="item #4"></div>
+      <div id="pt-item-5" class="pt" title="item #5"></div>
+      <div id="pt-item-6" class="pt" title="item #6"></div>
+
+      <!-- swipe visuals -->
+      <div id="swipe-line" class="sw-line"></div>
+      <div id="pt-swipe" class="pt yellow" title="Swipe Start"></div>
+      <div id="pt-swipe-handle" class="sw-handle" title="Swipe Handle (adjust dY)"></div>
+    </div>
+    <div class="small text-secondary mt-2">
+      ป้ายชื่อ: device(host:port ใช้เฉพาะถ่ายภาพ), slot_center, slot_status, slot_roi, <b>slot_status ROI</b>, overlay_abs, insert_roi, upgrade_btn, items[1..6], swipe
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">Raw Config (Preview)</div>
+  <div class="card-body">
+    <details open>
+      <summary>Show/Hide</summary>
+      <pre id="dump" class="bg-light border rounded p-2" style="min-height:160px;"></pre>
+    </details>
+  </div>
+</div>
+
+<script>
+let CFG = null, lastCfg = null;
+let shotMeta = {w:1280, h:720};
+let STATUS_W = 80, STATUS_H = 80;
+let currentDeviceId = null;
+
+const $ = sel => document.querySelector(sel);
+
+/* ---------- Device chooser ---------- */
+async function loadDevices(){
+  const r = await fetch('/api/devices'); const arr = await r.json();
+  const sel = $('#deviceSel'); sel.innerHTML = '';
+  arr.forEach(d=>{
+    const opt = document.createElement('option');
+    opt.value = d.id; opt.textContent = `${d.name || d.id} (${d.device})`;
+    sel.appendChild(opt);
+  });
+  if(arr.length){ currentDeviceId = arr[0].id; sel.value = currentDeviceId; }
+  sel.addEventListener('change', ()=>{ currentDeviceId = sel.value; refreshShot(); });
+}
+
+/* ---------- Helpers ---------- */
+function scaleInfo(){
+  const img = $('#shotimg');
+  const natW = img.naturalWidth || shotMeta.w || 1280;
+  const natH = img.naturalHeight|| shotMeta.h || 720;
+  const rW = img.clientWidth || natW;
+  const rH = img.clientHeight|| natH;
+  const sx = rW / natW, sy = rH / natH;
+  const off = img.getBoundingClientRect();
+  return {sx, sy, offLeft: off.left + window.scrollX, offTop: off.top + window.scrollY};
+}
+function px2scr(px, py){ const r = scaleInfo(); return [Math.round(px / r.sx), Math.round(py / r.sy)]; }
+function placeAll(){
+  const r = scaleInfo(), cfg = CFG;
+  const placeRect = (id, x1,y1,w,h)=>{
+    const el = document.querySelector(id); if(!el) return;
+    el.style.left = (x1 * r.sx) + 'px';
+    el.style.top  = (y1 * r.sy) + 'px';
+    el.style.width  = (w  * r.sx) + 'px';
+    el.style.height = (h  * r.sy) + 'px';
+  };
+  const placePt = (id, x,y)=>{
+    const el = document.querySelector(id); if(!el) return;
+    el.style.left = (x * r.sx) + 'px';
+    el.style.top  = (y * r.sy) + 'px';
+  };
+
+  // rects
+  placeRect('#roi-overlay', cfg.overlay_abs.x1, cfg.overlay_abs.y1, cfg.overlay_abs.w, cfg.overlay_abs.h);
+  placeRect('#roi-insert',  cfg.insert_roi.x1,  cfg.insert_roi.y1,  cfg.insert_roi.w,  cfg.insert_roi.h );
+
+  const [cx,cy] = cfg.slot_center, [sw,sh] = cfg.slot_roi;
+  placeRect('#roi-slot', cx - Math.floor(sw/2), cy - Math.floor(sh/2), sw, sh);
+
+  const [sx,sy] = cfg.slot_status;
+  placeRect('#roi-slot-status', sx - Math.floor(STATUS_W/2), sy - Math.floor(STATUS_H/2), STATUS_W, STATUS_H);
+
+  // points
+  placePt('#pt-slot-center', cfg.slot_center[0], cfg.slot_center[1]);
+  placePt('#pt-slot-status', cfg.slot_status[0], cfg.slot_status[1]);
+  placePt('#pt-upg', cfg.upgrade_btn[0], cfg.upgrade_btn[1]);
+  for(let i=1;i<=6;i++){ const [x,y] = cfg.items[i-1] || [0,0]; placePt('#pt-item-'+i, x,y); }
+
+  // swipe
+  const swStart = {x: cfg.swipe.x, y: cfg.swipe.y};
+  const swEnd   = {x: cfg.swipe.x, y: cfg.swipe.y + cfg.swipe.dy};
+  const line = $('#swipe-line');
+  if(line){
+    line.style.left   = (swStart.x * r.sx) + 'px';
+    line.style.top    = (Math.min(swStart.y, swEnd.y) * r.sy) + 'px';
+    line.style.height = (Math.abs(cfg.swipe.dy) * r.sy) + 'px';
+  }
+  const h = $('#pt-swipe-handle');
+  if(h){ h.style.left = (swEnd.x * r.sx) + 'px'; h.style.top = (swEnd.y * r.sy) + 'px'; }
+
+  const dump = $('#dump'); if(dump) dump.textContent = JSON.stringify(collectForm(), null, 2);
+}
+
+/* ---------- Form fill/collect ---------- */
+function fillForm(cfg){
+  lastCfg = JSON.parse(JSON.stringify(cfg));
+  STATUS_W = (cfg.slot_status_roi && cfg.slot_status_roi[0]) ? cfg.slot_status_roi[0] : 80;
+  STATUS_H = (cfg.slot_status_roi && cfg.slot_status_roi[1]) ? cfg.slot_status_roi[1] : 80;
+  placeAll();
+}
+function collectForm(){
+  return {
+    device: CFG.device,                      /* shared config: device ในที่นี้ไม่ได้ใช้บันทึก */
+    slot_center: CFG.slot_center,
+    slot_status: CFG.slot_status,
+    slot_roi:    CFG.slot_roi,
+    slot_status_roi: [STATUS_W, STATUS_H],
+    overlay_abs: CFG.overlay_abs,
+    insert_roi:  CFG.insert_roi,
+    upgrade_btn: CFG.upgrade_btn,
+    items: CFG.items,
+    swipe: CFG.swipe
+  };
+}
+
+/* ---------- Drag/Resize ---------- */
+function enableDragResize(){
+  const enable = document.getElementById('dragToggle')?.checked ?? true;
+  const stage = document.getElementById('stage'); if(!stage) return;
+  if(!enable){ stage.onmousedown = null; document.onmousemove=null; document.onmouseup=null; return; }
+
+  const r = ()=>scaleInfo();
+
+  function makeRectDrag(sel, getter, setter){
+    const el = document.querySelector(sel); if(!el) return;
+    const h  = el.querySelector('.handle');
+    let mode=null, s={};
+
+    function down(ev, isResize){
+      ev.preventDefault(); if(isResize) ev.stopPropagation();
+      mode = isResize ? 'resize' : 'move';
+      const sc = r(); const rect = el.getBoundingClientRect();
+      s = { startX:ev.clientX, startY:ev.clientY, offLeft:sc.offLeft, offTop:sc.offTop,
+            x:rect.left - sc.offLeft, y:rect.top - sc.offTop, w:rect.width, h:rect.height };
+      document.onmousemove = move; document.onmouseup = up;
+    }
+    function move(ev){
+      const dx = (ev.clientX - s.startX), dy = (ev.clientY - s.startY);
+      let nx = s.x, ny = s.y, nw = s.w, nh = s.h;
+      if(mode==='move'){ nx += dx; ny += dy; } else { nw = Math.max(10, s.w + dx); nh = Math.max(10, s.h + dy); }
+      el.style.left = nx + 'px'; el.style.top = ny + 'px';
+      el.style.width = nw + 'px'; el.style.height = nh + 'px';
+    }
+    function up(){
+      document.onmousemove=null; document.onmouseup=null;
+      const rect = el.getBoundingClientRect(); const sc = r();
+      const rx = rect.left - sc.offLeft, ry = rect.top - sc.offTop;
+      const [x1,y1] = px2scr(rx, ry);
+      const [w,h]   = px2scr(rect.width, rect.height);
+      const v = getter(); v.x1=x1; v.y1=y1; v.w=w; v.h=h; setter(v); placeAll();
+    }
+
+    el.onmousedown = (e)=>down(e, false);
+    if(h) h.onmousedown = (e)=>down(e, true);
+  }
+
+  makeRectDrag('#roi-overlay', ()=>CFG.overlay_abs, v=>CFG.overlay_abs=v);
+  makeRectDrag('#roi-insert',  ()=>CFG.insert_roi,  v=>CFG.insert_roi=v);
+
+  // slot (center+size)
+  (function(){
+    const getter = ()=> { const [cx,cy]=CFG.slot_center, [sw,sh]=CFG.slot_roi; return {x1:cx-Math.floor(sw/2),y1:cy-Math.floor(sh/2),w:sw,h:sh}; };
+    const setter = (v)=> { CFG.slot_center=[v.x1+Math.floor(v.w/2), v.y1+Math.floor(v.h/2)]; CFG.slot_roi=[v.w,v.h]; };
+    makeRectDrag('#roi-slot', getter, setter);
+  })();
+
+  // slot_status ROI (move + resize)
+  (function(){
+    const el = document.getElementById('roi-slot-status'); if(!el) return; const h = el.querySelector('.handle');
+    let mode=null, s={};
+    el.onmousedown = (ev)=>{
+      ev.preventDefault(); mode='move';
+      const sc = r(); const rect = el.getBoundingClientRect();
+      s = {startX:ev.clientX,startY:ev.clientY, offLeft:sc.offLeft,offTop:sc.offTop, x:rect.left-sc.offLeft, y:rect.top-sc.offTop, w:rect.width, h:rect.height};
+      document.onmousemove = (e)=>{ el.style.left = (s.x + (e.clientX - s.startX)) + 'px'; el.style.top = (s.y + (e.clientY - s.startY)) + 'px'; };
+      document.onmouseup = ()=>{
+        document.onmousemove=null; document.onmouseup=null;
+        const rect2 = el.getBoundingClientRect(); const sc2 = r();
+        const rx = rect2.left - sc2.offLeft, ry = rect2.top - sc2.offTop;
+        const [x1,y1] = px2scr(rx, ry); const [w,h] = px2scr(rect2.width, rect2.height);
+        STATUS_W=w; STATUS_H=h; CFG.slot_status=[x1+Math.floor(w/2), y1+Math.floor(h/2)]; CFG.slot_status_roi=[STATUS_W, STATUS_H];
+        placeAll();
+      };
+    };
+    if(h) h.onmousedown = (ev)=>{
+      ev.preventDefault(); ev.stopPropagation();
+      const sc = r(); const rect = el.getBoundingClientRect();
+      s = {startX:ev.clientX,startY:ev.clientY, w:rect.width, h:rect.height};
+      document.onmousemove = (e)=>{ el.style.width = Math.max(10, s.w + (e.clientX - s.startX)) + 'px'; el.style.height = Math.max(10, s.h + (e.clientY - s.startY)) + 'px'; };
+      document.onmouseup = ()=>{
+        document.onmousemove=null; document.onmouseup=null;
+        const rect2 = el.getBoundingClientRect(); const sc2 = r();
+        const rx = rect2.left - sc2.offLeft, ry = rect2.top - sc2.offTop;
+        const [x1,y1] = px2scr(rx, ry); const [w,h] = px2scr(rect2.width, rect2.height);
+        STATUS_W=w; STATUS_H=h; CFG.slot_status=[x1+Math.floor(w/2), y1+Math.floor(h/2)]; CFG.slot_status_roi=[STATUS_W, STATUS_H];
+        placeAll();
+      };
+    };
+  })();
+}
+
+/* ---------- API (ใช้ shim endpoints ของเรา) ---------- */
+async function fetchCfg(){
+  const r = await fetch('/api/config'); const j = await r.json();
+  CFG = j; lastCfg = JSON.parse(JSON.stringify(j));
+  placeAll();
+  await renderShot();
+}
+async function saveCfg(){
+  const payload = collectForm();
+  const r = await fetch('/api/save-config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const j = await r.json(); alert(j.ok ? 'Saved' : ('Error: ' + (j.error||'')));
+  if(j.ok){ await fetchCfg(); }
+}
+function undoCfg(){ if(lastCfg){ CFG = JSON.parse(JSON.stringify(lastCfg)); placeAll(); } }
+async function clearCfg(){
+  if(!confirm('Clear config file?')) return;
+  const r = await fetch('/api/clear-config', {method:'POST'}); const j = await r.json();
+  alert(j.ok ? 'Cleared' : ('Error: '+(j.error||''))); if(j.ok){ await fetchCfg(); }
+}
+
+/* ---------- Screenshot flow (ต่อ device ที่เลือก) ---------- */
+async function renderShot(force=true){
+  if(!currentDeviceId){ await loadDevices(); if(!currentDeviceId) return; }
+  const img = document.getElementById('shotimg');
+  img.onload = ()=>{ shotMeta.w=img.naturalWidth; shotMeta.h=img.naturalHeight; placeAll(); enableDragResize(); };
+  img.src = `/api/devices/${encodeURIComponent(currentDeviceId)}/shot` + (force ? `?t=${Date.now()}` : '');
+}
+async function refreshShot(){ await renderShot(true); }
+async function snapAndRefresh(){
+  // ถ้าคุณต้องการสั่งถ่ายใหม่ในอุปกรณ์จริง อาจเพิ่ม endpoint /api/devices/<id>/snap
+  await renderShot(true);
+}
+
+/* ---------- Boot ---------- */
+document.addEventListener('DOMContentLoaded', async ()=>{
+  await loadDevices();
+  await fetchCfg();
+  const dragToggle = document.getElementById('dragToggle');
+  if(dragToggle) dragToggle.addEventListener('change', enableDragResize);
+  window.addEventListener('resize', ()=>placeAll());
+});
+</script>
+{% endblock %}

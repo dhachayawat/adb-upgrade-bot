@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <a href="/" class="btn btn-link p-0">&larr; Back</a>
+    <h3 class="m-0 mt-2">Manage Devices</h3>
+    <div class="text-muted small">Add or edit devices (host:port or usb:&lt;serial&gt;)</div>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary btn-sm" onclick="refresh()">Refresh</button>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="mb-3">Add / Edit</h6>
+    <div class="row g-3">
+      <div class="col-12 col-md-2">
+        <label class="form-label small mb-1">ID</label>
+        <input id="f-id" class="form-control form-control-sm" placeholder="d1">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small mb-1">Name</label>
+        <input id="f-name" class="form-control form-control-sm" placeholder="BlueStack-1">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label small mb-1">Device</label>
+        <input id="f-device" class="form-control form-control-sm" placeholder="host.docker.internal:5565 or usb:SERIAL">
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label small mb-1">Target +N</label>
+        <input id="f-target" type="number" min="1" max="10" class="form-control form-control-sm" value="5">
+      </div>
+      <div class="col-12 col-md-1 d-flex align-items-end">
+        <button class="btn btn-primary btn-sm w-100" onclick="save()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h6 class="mb-3">Devices</h6>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="tbl">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Device</th>
+            <th>Target</th>
+            <th>State</th>
+            <th style="width:200px;"></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+async function api(path, opt){
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opt||{}));
+  return r.json();
+}
+function esc(s){ return (''+s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function stateBadge(s){
+  const map={running:'success', paused:'warning', idle:'secondary', error:'danger', stopping:'secondary'};
+  const cls=map[s]||'secondary'; return `<span class="badge text-bg-${cls} text-uppercase">${s}</span>`;
+}
+async function load(){
+  const data = await api('/api/devices');
+  const tb = document.getElementById('rows'); tb.innerHTML = '';
+  data.forEach(d=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="text-monospace">${esc(d.id)}</td>
+      <td>${esc(d.name||'')}</td>
+      <td class="text-monospace">${esc(d.device||'')}</td>
+      <td>+${d.target_level ?? 5}</td>
+      <td>${stateBadge(d.state)}</td>
+      <td class="text-end">
+        <a class="btn btn-outline-primary btn-sm me-1" href="/devices/${encodeURIComponent(d.id)}">Open</a>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
+function fill(id,name,device,target){
+  document.getElementById('f-id').value = id;
+  document.getElementById('f-name').value = name;
+  document.getElementById('f-device').value = device;
+  document.getElementById('f-target').value = target||5;
+}
+async function save(){
+  const id = document.getElementById('f-id').value.trim();
+  const name = document.getElementById('f-name').value.trim();
+  const device = document.getElementById('f-device').value.trim();
+  const target = parseInt(document.getElementById('f-target').value, 10) || 5;
+  if(!id || !name || !device){ alert('Please fill ID, Name, and Device'); return; }
+  const body = {id, name, device, target_level: target};
+  const r = await api('/api/devices', {method:'POST', body: JSON.stringify(body)});
+  if(r.error){ alert(r.error); return; }
+  refresh(); clearForm();
+}
+function clearForm(){
+  document.getElementById('f-id').value = '';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-device').value = '';
+  document.getElementById('f-target').value = 5;
+}
+async function del(id){
+  if(!confirm('Delete device '+id+' ?')) return;
+  const r = await api('/api/devices/'+encodeURIComponent(id), {method:'DELETE'});
+  if(r.error){ alert(r.error); return; }
+  refresh();
+}
+async function refresh(){ await load(); }
+document.addEventListener('DOMContentLoaded', load);
+</script>
+{% endblock %}
