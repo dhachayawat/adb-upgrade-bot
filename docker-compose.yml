@@ -7,6 +7,17 @@ services:
     environment:
       DEVICE: "host.docker.internal:5565"
 
+      ADB_RETRY_MAX: "6"
+      ADB_RETRY_SLEEP: "0.6"
+      ADB_TAP_LOCAL_RETRY: "5"
+      ADB_TAP_BACKOFF: "0.6"
+      ADB_SWIPE_LOCAL_RETRY: "4"
+      ADB_SWIPE_BACKOFF: "0.6"
+      POST_INSERT_SETTLE: "0.5"
+
+      LOG_LEVEL: "INFO"   # หรือ "DEBUG" ถ้าต้องละเอียด
+      LOG_DIR: "/app/logs"
+
       OVERLAY_USE_ABS: "1"
       OVERLAY_X1: "720"   # ขยับทีละ 5–10 px ก็พอ
       OVERLAY_Y1: "170"
@@ -64,7 +75,7 @@ services:
       CONF_FAIL_THR: "0.80"
       CONF_SUCCESS_THR: "0.80"
 
-      DEBUG: "0"   # ตั้งเป็น "1" ชั่วคราวถ้าต้องการรูป debug
+      DEBUG: "1"   # ตั้งเป็น "1" ชั่วคราวถ้าต้องการรูป debug
     ports:
       - "8765:8765"
     volumes:
@@ -73,3 +84,6 @@ services:
       - ./data:/app/data            # << ใหม่: เก็บไฟล์คอนฟิกถาวร /app/data/config/config.json
       - ./logs:/app/logs
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+

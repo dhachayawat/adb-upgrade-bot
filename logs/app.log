@@ -1,0 +1,134 @@
+2025-10-20 11:20:28,671 INFO === BOOT OK / logger stdout test ===
+2025-10-20 11:20:57,018 INFO [d2] start
+2025-10-20 11:20:57,019 INFO [d2] loop start
+2025-10-20 11:20:57,020 INFO [d2] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 11:20:57,021 INFO [d2] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 11:20:57,022 INFO [d2] แตะไอเทม idx=0 @(285,170)
+2025-10-20 11:20:57,023 ERROR [d2] step error: 'ADBAdapter' object has no attribute 'tap'
+2025-10-20 11:20:57,024 INFO [d2] loop exit (state=error)
+2025-10-20 11:30:09,470 INFO === BOOT OK / logger stdout test ===
+2025-10-20 11:31:02,835 INFO [d2] start
+2025-10-20 11:31:02,836 INFO [d2] loop start
+2025-10-20 11:31:02,837 INFO [d2] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 11:31:02,838 INFO [d2] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 11:31:02,838 INFO [d2] แตะไอเทม idx=0 @(285,170)
+2025-10-20 11:31:02,848 ERROR [d2] step error: tap failed @(285,170) error: closed
+
+2025-10-20 11:31:02,850 INFO [d2] loop exit (state=error)
+2025-10-20 11:43:43,583 INFO === BOOT OK / logger stdout test ===
+2025-10-20 11:44:37,953 INFO [d2] start
+2025-10-20 11:44:37,954 INFO [d2] loop start
+2025-10-20 11:44:37,955 INFO [d2] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 11:44:37,956 INFO [d2] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 11:44:37,957 INFO [d2] แตะไอเทม idx=0 @(285,170)
+2025-10-20 11:44:39,084 ERROR [d2] step error: tap failed @(285,170) error: closed
+
+2025-10-20 11:44:39,085 INFO [d2] loop exit (state=error)
+2025-10-20 11:44:50,252 INFO [d2] stopping...
+2025-10-20 11:44:50,253 INFO [d2] stopped
+2025-10-20 11:57:47,834 INFO === BOOT OK / logger stdout test ===
+2025-10-20 11:58:10,962 INFO [d2] start
+2025-10-20 11:58:11,384 INFO [d2] loop start
+2025-10-20 11:58:11,385 INFO [d2] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 11:58:11,386 INFO [d2] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 11:58:11,386 INFO [d2] แตะไอเทม idx=0 @(285,170)
+2025-10-20 11:58:16,179 ERROR [d2] step error: tap failed @(285,170) error: closed
+
+2025-10-20 11:58:16,182 INFO [d2] loop exit (state=error)
+2025-10-20 11:58:38,636 INFO [d2] stopping...
+2025-10-20 11:58:38,638 INFO [d2] stopped
+2025-10-20 12:08:18,265 INFO === BOOT OK / logger stdout test ===
+2025-10-20 12:08:31,213 INFO [d2] start
+2025-10-20 12:08:31,633 INFO [d2] loop start
+2025-10-20 12:08:31,634 INFO [d2] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 12:08:31,636 INFO [d2] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 12:08:31,637 INFO [d2] แตะไอเทม idx=0 @(285,170)
+2025-10-20 12:08:41,031 ERROR [d2] step error: tap failed @(285,170) error: closed
+
+2025-10-20 12:08:41,032 INFO [d2] loop exit (state=error)
+2025-10-20 12:08:48,825 INFO [d2] stopping...
+2025-10-20 12:08:48,826 INFO [d2] stopped
+2025-10-20 12:09:06,088 INFO [d1] start
+2025-10-20 12:09:06,509 INFO [d1] loop start
+2025-10-20 12:09:06,512 INFO [d1] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 12:09:06,514 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 12:09:06,515 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 12:09:15,745 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 12:09:15,746 INFO [d1] loop exit (state=error)
+2025-10-20 12:09:32,363 INFO [d1] stopping...
+2025-10-20 12:09:32,364 INFO [d1] stopped
+2025-10-20 12:11:36,754 INFO === BOOT OK / logger stdout test ===
+2025-10-20 12:18:50,350 INFO [d1] start
+2025-10-20 12:18:50,770 INFO [d1] loop start
+2025-10-20 12:18:50,771 INFO [d1] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 12:18:50,772 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 12:18:50,773 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 12:19:00,150 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 12:19:00,151 INFO [d1] loop exit (state=error)
+2025-10-20 12:20:23,182 INFO [d1] stopping...
+2025-10-20 12:20:23,183 INFO [d1] stopped
+2025-10-20 12:20:32,306 INFO [d2] start
+2025-10-20 12:20:32,725 INFO [d2] loop start
+2025-10-20 12:20:32,727 INFO [d2] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 12:20:32,728 INFO [d2] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 12:20:32,728 INFO [d2] แตะไอเทม idx=0 @(285,170)
+2025-10-20 12:20:41,850 ERROR [d2] step error: tap failed @(285,170) error: closed
+
+2025-10-20 12:20:41,851 INFO [d2] loop exit (state=error)
+2025-10-20 12:33:39,996 INFO === BOOT OK / logger stdout test ===
+2025-10-20 14:57:00,155 INFO === BOOT OK / logger stdout test ===
+2025-10-20 15:10:20,055 INFO === BOOT OK / logger stdout test ===
+2025-10-20 16:03:41,475 INFO [d1] start
+2025-10-20 16:03:41,905 INFO [d1] loop start
+2025-10-20 16:03:41,907 INFO [d1] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 16:03:41,908 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 16:03:41,909 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 16:03:52,527 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 16:03:52,529 INFO [d1] loop exit (state=error)
+2025-10-20 16:03:56,436 INFO [d1] start
+2025-10-20 16:03:56,438 INFO [d1] loop start
+2025-10-20 16:03:56,439 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 16:03:56,441 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 16:03:58,974 INFO [d1] stopping...
+2025-10-20 16:04:03,976 INFO [d1] stopped
+2025-10-20 16:04:07,343 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 16:04:07,344 INFO [d1] loop exit (state=error)
+2025-10-20 16:27:50,612 INFO === BOOT OK / logger stdout test ===
+2025-10-20 16:29:02,829 INFO [d1] start
+2025-10-20 16:29:03,252 INFO [d1] loop start
+2025-10-20 16:29:03,253 INFO [d1] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 16:29:03,255 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 16:29:03,256 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 16:29:13,972 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 16:29:13,974 INFO [d1] loop exit (state=error)
+2025-10-20 16:29:26,582 INFO [d1] stopping...
+2025-10-20 16:29:26,583 INFO [d1] stopped
+2025-10-20 16:29:42,966 INFO [d1] start
+2025-10-20 16:29:42,967 INFO [d1] loop start
+2025-10-20 16:29:42,968 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 16:29:42,970 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 16:29:53,648 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 16:29:53,649 INFO [d1] loop exit (state=error)
+2025-10-20 16:29:59,462 INFO [d1] stopping...
+2025-10-20 16:29:59,464 INFO [d1] stopped
+2025-10-20 16:36:59,613 INFO === BOOT OK / logger stdout test ===
+2025-10-20 16:37:29,310 INFO [d1] start
+2025-10-20 16:37:29,739 INFO [d1] loop start
+2025-10-20 16:37:29,741 INFO [d1] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 16:37:29,743 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 16:37:29,745 INFO [d1] แตะไอเทม idx=0 @(285,170)
+2025-10-20 16:37:40,452 ERROR [d1] step error: tap failed @(285,170) error: closed
+
+2025-10-20 16:37:40,453 INFO [d1] loop exit (state=error)
+2025-10-20 16:50:08,976 INFO === BOOT OK / logger stdout test ===
+2025-10-20 16:53:54,566 INFO [d1] start
+2025-10-20 16:53:54,995 INFO [d1] loop start
+2025-10-20 16:53:54,996 INFO [d1] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-20 16:53:54,997 INFO [d1] stage=pick item_idx=0 target=+5 base=None succ=0
+2025-10-20 16:53:54,999 INFO [d1] แตะไอเทม idx=0 @(285,170)

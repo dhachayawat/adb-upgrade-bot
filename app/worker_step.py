@@ -150,8 +150,12 @@ def worker_step(controller) -> Dict[str, Any]:
     dev_addr = controller.device
     target   = controller.target_level
 
-    # เตรียมอะแดปเตอร์/พิกัด
-    adb = ADBAdapter(dev_addr)
+    adb = getattr(controller, "adb", None)
+    if adb is None:
+        from .core.adb_adapter import ADBAdapter
+        adb = ADBAdapter(controller.device)
+        controller.adb = adb
+
     items = _items()
     slot_center = _pt("slot_center", (0,0))
     upgrade_btn = _pt("upgrade_btn", (0,0))
@@ -213,12 +217,10 @@ def worker_step(controller) -> Dict[str, Any]:
         return {}
 
     if c["stage"] == "insert":
-        # แตะไอเทมอีกรอบ + แตะ slot_center
         idx = c["item_idx"] % len(items)
         ix,iy = items[idx]
-        LOG.i(f"[{dev_id}] INSERT แตะไอเทมอีกรอบ idx={idx} @({ix},{iy}) และแตะช่อง @({slot_center[0]},{slot_center[1]})")
         adb.tap(ix, iy)
-        time.sleep(0.05)
+        time.sleep(float(os.getenv("PRE_INSERT_DELAY", "0.8")))  # << ใส่คืนจากเวิร์กเกอร์เดิม
         sx,sy = slot_center
         adb.tap(sx, sy)
         c["stage"] = "upgrade"

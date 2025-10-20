@@ -9,6 +9,7 @@ from typing import Dict, Optional, Callable, List, Any
 from app import rtlog as LOG
 from app.config_store import ConfigStore, Device as DeviceModel
 
+from app.core.adb_adapter import ADBAdapter
 
 @dataclass
 class _RingLogger:
@@ -51,6 +52,8 @@ class DeviceController:
         self.last_tick: float = 0.0
         self.last_error: str = ""
         self.items_upgraded_done: int = 0
+
+        self.adb: Optional[ADBAdapter] = None
 
         # per-device log buffer
         self._rlog = _RingLogger(max_lines=3000)
@@ -99,9 +102,21 @@ class DeviceController:
 
     def _run_loop(self) -> None:
         try:
-            # lazy import กัน path issue และให้ hot reload worker_step ได้ง่ายขึ้น
-            from app.worker_step import worker_loop  # type: ignore
-            worker_loop(self, self.step_fn)  # step_fn(self) ภายใน loop
+            if self.adb is None:
+                from app.core.adb_adapter import ADBAdapter
+                self.adb = ADBAdapter(self.device)
+            try:
+                self.adb.ensure_connected()
+                if hasattr(self.adb, "stay_awake"): self.adb.stay_awake()
+                self.adb.wake_and_unlock()
+            except Exception as e:
+                self.last_error = f"preflight adb: {e}"
+                self.state = "error"
+                self.log_e(self.last_error)
+                return
+
+            from app.worker_step import worker_loop  # lazy import
+            worker_loop(self, self.step_fn)
         except Exception as e:
             self.last_error = str(e)
             self.state = "error"

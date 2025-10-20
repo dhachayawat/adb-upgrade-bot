@@ -5,6 +5,7 @@ import os
 from app.config_api import init_api         # <-- ไม่ต้อง import bp_api
 from app.config_ui import create_app
 from app.worker_step import worker_step
+from . import rtlog as LOG
 
 def main():
     # ผูก API กับ step_fn (ให้ DeviceManager ใช้)
@@ -19,6 +20,9 @@ def main():
 
     # รันเว็บเซิร์ฟเวอร์
     print(f"[main] starting flask on {host}:{port}", flush=True)
+    from . import rtlog as LOG
+    LOG.i("=== BOOT OK / logger stdout test ===")
+    print("=== PRINT to stdout test ===", flush=True)
     app.run(host=host, port=port, threaded=True, use_reloader=False)
 
 if __name__ == "__main__":

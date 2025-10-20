@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, request, send_file
 import cv2, numpy as np
 import tempfile, os
+import time
 
 from typing import Optional
 
@@ -66,6 +67,26 @@ def api_device_step_once(device_id: str):
         return jsonify({"ok": True, "out": res})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@bp_api.post("/devices/<device_id>/tap")
+def api_device_tap(device_id: str):
+    init_api()
+    ctrl = _mgr.get(device_id)
+    if not ctrl:
+        return jsonify({"error":"not found"}), 404
+    body = request.get_json(silent=True) or {}
+    x = int(body.get("x", 0)); y = int(body.get("y", 0))
+    try:
+        if not getattr(ctrl, "adb", None):
+            from app.core.adb_adapter import ADBAdapter
+            ctrl.adb = ADBAdapter(ctrl.device)
+            ctrl.adb.ensure_connected(); 
+            if hasattr(ctrl.adb, "stay_awake"): ctrl.adb.stay_awake()
+        ctrl.adb.tap(x, y)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @bp_api.get("/devices/<device_id>/shot")
 def api_device_shot(device_id: str):
@@ -74,23 +95,56 @@ def api_device_shot(device_id: str):
     if not ctrl:
         return jsonify({"error": "not found"}), 404
 
+    # เงื่อนไขการบันทึกไฟล์
+    save_q = request.args.get("save", "0")  # /shot?save=1 จะบังคับเซฟ
+    want_save = (
+        os.getenv("DEBUG", "0") == "1"
+        or os.getenv("SAVE_SCREENCAP", "0") == "1"
+        or save_q == "1"
+    )
+
     try:
         adb = ADBAdapter(ctrl.device)
         img = adb.screencap()
         ok, buf = cv2.imencode(".png", img)
         if not ok:
             return jsonify({"error": "encode failed"}), 500
+
+        # ----- บันทึกไฟล์ลง cache/debug (ไม่ให้ทำให้ API พัง ถ้าเขียนไฟล์ล้มเหลว) -----
+        saved_path = None
+        if want_save:
+            try:
+                base_dir = os.getenv("DEBUG_DIR") or os.getenv("CACHE_DIR", "/app/cache")
+                os.makedirs(base_dir, exist_ok=True)
+                ts = time.strftime("%Y%m%d-%H%M%S")
+                prefix = os.getenv("SCREENCAP_PREFIX", "shot")
+                fname = f"{prefix}-{device_id}-{ts}.png"
+                fpath = os.path.join(base_dir, fname)
+                with open(fpath, "wb") as f:
+                    f.write(buf.tobytes())
+                saved_path = fpath
+            except Exception as e:
+                # แค่ log ไว้ ไม่ทำให้ API fail
+                LOG.w(f"[{device_id}] บันทึกสกรีนช็อตไม่สำเร็จ: {e}")
+
+        # ----- ส่งรูปกลับเป็น image/png -----
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         try:
             tmp.write(buf.tobytes()); tmp.flush(); tmp.close()
-            return send_file(tmp.name, mimetype="image/png", as_attachment=False)
+            # แนบ header บอก path ที่บันทึก (ถ้ามี)
+            resp = send_file(tmp.name, mimetype="image/png", as_attachment=False)
+            if saved_path:
+                resp.headers["X-Saved-Path"] = saved_path  # ใช้ devtools ดู header นี้ได้
+            return resp
         finally:
             try: os.remove(tmp.name)
             except: pass
+
     except ADBError as e:
         return jsonify({"error": f"adb: {str(e)}"}), 502
     except Exception as e:
         return jsonify({"error": f"internal: {str(e)}"}), 500
+
 
 @bp_api.post("/devices/<device_id>/start")
 def api_device_start(device_id: str):
@@ -99,38 +153,32 @@ def api_device_start(device_id: str):
     if not ctrl:
         return jsonify({"error": "not found"}), 404
 
-    # ── (ออปชัน แต่แนะนำ) ตรวจ ADB ก่อนเริ่ม เพื่อให้ error ชัดเจน ──
-    preflight = request.args.get("preflight", "1")  # ปิดได้ด้วย ?preflight=0
-    if preflight == "1":
-        try:
-            adb = ADBAdapter(ctrl.device)   # ใช้ตัวเดียวกับ /shot
-            adb.ensure_connected()
-        except Exception as e:
-            return jsonify({
-                "error": "adb",
-                "message": str(e),
-                "status": ctrl.status() if hasattr(ctrl, "status") else {}
-            }), 502
+    # (แนะนำ) เช็ค ADB ก่อน
+    try:
+        adb = ADBAdapter(ctrl.device)
+        adb.ensure_connected()
+    except Exception as e:
+        return jsonify({"error": "adb", "message": str(e), "status": ctrl.status()}), 502
 
     try:
-        ok = _mgr.start(device_id)  # ให้ DeviceManager จัดการ state/thread
-        return jsonify({
-            "ok": bool(ok),
-            "status": ctrl.status() if hasattr(ctrl, "status") else {}
-        })
+        ok = _mgr.start(device_id)
+        # รอสั้น ๆ ให้ thread สตาร์ทแล้วลองอ่านสถานะ
+        time.sleep(0.1)
+        alive = bool(ctrl.thread and ctrl.thread.is_alive())
+        return jsonify({"ok": bool(ok), "thread_alive": alive, "status": ctrl.status()})
     except RuntimeError as e:
-        # กรณี state ไม่เหมาะสม เช่น กำลังรันอยู่แล้ว
-        return jsonify({
-            "error": "conflict",
-            "message": str(e),
-            "status": ctrl.status() if hasattr(ctrl, "status") else {}
-        }), 409
-    except ValueError as e:
-        # bad input หรือ config ไม่ครบ
-        return jsonify({"error": "bad_request", "message": str(e)}), 400
+        return jsonify({"error": "conflict", "message": str(e), "status": ctrl.status()}), 409
     except Exception as e:
-        # กันตก
-        return jsonify({"error": "internal", "message": str(e)}), 500
+        import traceback, io
+        tb = io.StringIO()
+        traceback.print_exc(file=tb)
+        return jsonify({
+            "error": "internal",
+            "message": str(e),
+            "traceback": tb.getvalue(),
+            "status": ctrl.status()
+        }), 500
+
 
 
 @bp_api.post("/devices/<device_id>/pause")
