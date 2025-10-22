@@ -150,8 +150,8 @@ def _read_bracket_level_from_status(adb: ADBAdapter,
     if os.getenv("SAVE_SCREENCAP", "1") != "0":
         try:
             os.makedirs(_CFG.get("debug_dir", "/app/cache/debug"), exist_ok=True)
-            cv2.imwrite(os.path.join(_CFG.get("debug_dir", "/app/cache/debug"), f"{debug_tag}_status_roi.png"), roi)
-            cv2.imwrite(os.path.join(_CFG.get("debug_dir", "/app/cache/debug"), f"{debug_tag}_status_thr.png"), thr)
+            cv2.imwrite(os.path.join(_CFG.get("debug_dir", "/app/cache/debug")), roi)
+            cv2.imwrite(os.path.join(_CFG.get("debug_dir", "/app/cache/debug")), thr)
         except Exception:
             pass
     return lvl
@@ -257,20 +257,6 @@ def _ctx(dev_id: str) -> dict:
         LOG.i(f"[{dev_id}] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0")
     return c
 
-def _maybe_swipe(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
-    """เลื่อนถาดเมื่อวนครบ 1 แถว (เช่น 6 ไอเทม)"""
-    if not items:
-        return
-    if (c["item_idx"] % len(items)) == 0:
-        x, y, dy, ms = swipe_cfg["x"], swipe_cfg["y"], swipe_cfg["dy"], swipe_cfg["ms"]
-        LOG.i(f"[{dev_id}] เลื่อนถาด x={x} y={y} dy={dy} ms={ms}")
-        try:
-            adb.swipe(x, y, dy=dy, ms=ms)
-            time.sleep(0.25)  # หน่วงให้ UI นิ่งนิดนึง
-        except Exception as e:
-            LOG.w(f"[{dev_id}] เลื่อนถาดล้มเหลว: {e}")
-
-
 def _log_config_once(dev_id: str, *, slot_center, slot_status_roi, slot_roi_size, upgrade_btn, overlay_abs, insert_roi, items, swipe_cfg):
     c = _ctx(dev_id)
     if c.get("_cfg_dumped"):
@@ -285,13 +271,28 @@ def _log_config_once(dev_id: str, *, slot_center, slot_status_roi, slot_roi_size
     LOG.i(f"[{dev_id}] CFG swipe={swipe_cfg}")
     c["_cfg_dumped"] = True
 
+# ---- centralized "next item" transition ----
+def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
+    c["item_idx"] += 1
+    if items and (c["item_idx"] % len(items) == 0):
+        x, y, dy, ms = swipe_cfg["x"], swipe_cfg["y"], swipe_cfg["dy"], swipe_cfg["ms"]
+        LOG.i(f"[{dev_id}] SWIPE after {len(items)} items → ({x},{y})→({x},{y+dy}) ms={ms}")
+        try:
+            adb.swipe(x, y, dy=dy, ms=ms)
+            time.sleep(0.25)
+        except Exception as e:
+            LOG.w(f"[{dev_id}] swipe fail: {e}")
+    c["stage"] = "pick"
+    c["successes"] = 0
+    c["base_level"] = None
+
 # ===================== Main step =====================
 def worker_step(controller) -> Dict[str, Any]:
     """
     State machine (integrated with high-accuracy logic):
     - pick    : tap item
     - inspect : read [n] from slot_status_roi BEFORE insert
-    - insert  : tap item again -> CV click 'insert' (fallback slot_center)
+    - insert  : click 'insert' via CV (no extra item tap); fallback slot_center (commented)
     - upgrade : tap upgrade button, detect overlay result (OCR->TM->Color); break behavior at level>=_BREAK_LEVEL_MIN
     """
     dev_id = controller.id
@@ -307,11 +308,12 @@ def worker_step(controller) -> Dict[str, Any]:
     slot_roi_size = _size2("slot_roi", (80, 80))  # [w,h] legacy size for emptiness check
     upgrade_btn = _pt("upgrade_btn", (0, 0))
     overlay_abs = _rect("overlay_abs", (0, 0, 0, 0))
-    slot_status_roi = _rect("slot_status_roi", (0, 0, 0, 0))  # NEW schema: dict {x1,y1,w,h}
+    slot_status_roi = _rect("slot_status_roi", (0, 0, 0, 0))  # dict {x1,y1,w,h}
     insert_roi = _rect("insert_roi", (0, 0, 0, 0))
     swipe_cfg = _swipe()
 
-    _log_config_once(dev_id,
+    _log_config_once(
+        dev_id,
         slot_center=slot_center,
         slot_status_roi=slot_status_roi,
         slot_roi_size=slot_roi_size,
@@ -359,26 +361,21 @@ def worker_step(controller) -> Dict[str, Any]:
             c["last_action_ts"] = time.time()
         else:
             LOG.i(f"[{dev_id}] ข้ามไอเทมนี้ (level={lvl} >= 5)")
-            c["item_idx"] += 1
-            if c["item_idx"] % len(items) == 0:
-                LOG.i(f"[{dev_id}] เลื่อนถาด x={swipe_cfg['x']} y={swipe_cfg['y']} dy={swipe_cfg['dy']} ms={swipe_cfg['ms']}")
-                adb.swipe(swipe_cfg["x"], swipe_cfg["y"], dy=swipe_cfg["dy"], ms=swipe_cfg["ms"])
-            c["stage"] = "pick"
+            _next_item(dev_id, adb, items, swipe_cfg, c)
         return {}
 
-    # ---------- Stage: insert (CV insert with 0.8s wait, then extra 0.5s settle) ----------
+    # ---------- Stage: insert (CV insert then wait 0.5s) ----------
     if c["stage"] == "insert":
         idx = c["item_idx"] % len(items)
         ix, iy = items[idx]
-        LOG.i(f"[{dev_id}] INSERT: แตะไอเทม idx={idx} @({ix},{iy})")
-        adb.tap(ix, iy)
+        LOG.i(f"[{dev_id}] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx={idx} @({ix},{iy})")
 
         LOG.i(f"[{dev_id}] INSERT: try CV insert in roi=({insert_roi[0]},{insert_roi[1]},{insert_roi[2]},{insert_roi[3]})")
         ok = _click_insert_via_cv(adb, insert_roi_rect=insert_roi, wait_pre=None)
         if not ok:
             sx, sy = slot_center
             LOG.w(f"[{dev_id}] INSERT: CV not found → fallback slot_center @({sx},{sy})")
-            adb.tap(sx, sy)
+            # adb.tap(sx, sy)   # ใช้เมื่อจำเป็นเท่านั้น
 
         LOG.i(f"[{dev_id}] INSERT: done → รอ 0.5s")
         time.sleep(0.5)
@@ -396,17 +393,13 @@ def worker_step(controller) -> Dict[str, Any]:
         # Stop conditions
         if cur >= target:
             LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → นับชิ้นสำเร็จ 1 ชิ้น และไปชิ้นถัดไป")
-            c["item_idx"] += 1
-            _maybe_swipe(dev_id, adb, items, swipe_cfg, c)
-            c["stage"] = "pick"
+            _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"done_item": True}
 
         # Pre-check: slot still there?
         if _is_slot_empty(adb, slot_center, slot_roi_size):
             LOG.i(f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
-            c["item_idx"] += 1
-            _maybe_swipe(dev_id, adb, items, swipe_cfg, c)
-            c["stage"] = "pick"
+            _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"break_at_level": cur}
 
         ux, uy = upgrade_btn
@@ -431,9 +424,7 @@ def worker_step(controller) -> Dict[str, Any]:
             if cur >= _BREAK_LEVEL_MIN:
                 _summary().add_break(controller.id, attempt_level)
                 LOG.i(f"[{dev_id}] แตกที่ +{attempt_level} (>= min {_BREAK_LEVEL_MIN}) → ไปชิ้นถัดไป")
-                c["item_idx"] += 1
-                _maybe_swipe(dev_id, adb, items, swipe_cfg, c)
-                c["stage"] = "pick"
+                _next_item(dev_id, adb, items, swipe_cfg, c)
                 out["break_at_level"] = attempt_level
                 return out
             else:
@@ -461,9 +452,7 @@ def worker_step(controller) -> Dict[str, Any]:
             if cur >= _BREAK_LEVEL_MIN:
                 _summary().add_break(controller.id, attempt_level)
                 LOG.i(f"[{dev_id}] แตกที่ +{attempt_level} → ไปชิ้นถัดไป")
-                c["item_idx"] += 1
-                _maybe_swipe(dev_id, adb, items, swipe_cfg, c)
-                c["stage"] = "pick"
+                _next_item(dev_id, adb, items, swipe_cfg, c)
                 out["break_at_level"] = attempt_level
                 return out
             else:
@@ -500,8 +489,14 @@ def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
             if time.time() - t0_item > _MAX_ITEM_TIME_SEC:
                 LOG.i(f"[{ctrl.id}] item timeout {_MAX_ITEM_TIME_SEC}s → advance item")
                 c = _ctx(ctrl.id)
-                c["item_idx"] += 1
-                c["stage"] = "pick"
+                # ใช้เส้นทางรวมศูนย์ เพื่อคงลอจิก swipe ทุก 6 ชิ้น
+                items = _items()
+                swipe_cfg = _swipe()
+                adb = getattr(ctrl, "adb", None)
+                if adb is None:
+                    adb = ADBAdapter(ctrl.device)
+                    ctrl.adb = adb
+                _next_item(ctrl.id, adb, items, swipe_cfg, c)
                 t0_item = time.time()
 
             # heartbeat
