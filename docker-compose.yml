@@ -14,6 +14,7 @@ services:
       ADB_SWIPE_LOCAL_RETRY: "4"
       ADB_SWIPE_BACKOFF: "0.6"
       POST_INSERT_SETTLE: "0.5"
+      DISABLE_TONE_DETECT: "1"
 
       LOG_LEVEL: "INFO"   # หรือ "DEBUG" ถ้าต้องละเอียด
       LOG_DIR: "/app/logs"

@@ -78,7 +78,7 @@
 
       <!-- points -->
       <div id="pt-slot-center" class="pt yellow" title="slot_center"></div>
-      <div id="pt-slot-status" class="pt cyan"   title="slot_status"></div>
+      <div id="pt-slot-status" class="pt cyan"   title="slot_status (center)"></div>
       <div id="pt-upg" class="pt red" title="upgrade_btn"></div>
       <div id="pt-item-1" class="pt" title="item #1"></div>
       <div id="pt-item-2" class="pt" title="item #2"></div>
@@ -141,6 +141,20 @@ function scaleInfo(){
   return {sx, sy, offLeft: off.left + window.scrollX, offTop: off.top + window.scrollY};
 }
 function px2scr(px, py){ const r = scaleInfo(); return [Math.round(px / r.sx), Math.round(py / r.sy)]; }
+
+/** Read slot_status_roi from CFG in a unified way (dict preferred; legacy [w,h] supported). */
+function ssrFromCfg(cfg){
+  const r = cfg.slot_status_roi;
+  if (r && typeof r === 'object' && 'x1' in r && 'y1' in r && 'w' in r && 'h' in r) {
+    return { x1: r.x1|0, y1: r.y1|0, w: r.w|0, h: r.h|0 };
+  }
+  // legacy: [w,h] + center
+  const [cx,cy] = cfg.slot_status || [0,0];
+  const w = (Array.isArray(r) && r.length>=2) ? (r[0]|0) : 80;
+  const h = (Array.isArray(r) && r.length>=2) ? (r[1]|0) : 80;
+  return { x1: (cx|0) - Math.floor(w/2), y1: (cy|0) - Math.floor(h/2), w, h };
+}
+
 function placeAll(){
   const r = scaleInfo(), cfg = CFG;
   const placeRect = (id, x1,y1,w,h)=>{
@@ -160,15 +174,20 @@ function placeAll(){
   placeRect('#roi-overlay', cfg.overlay_abs.x1, cfg.overlay_abs.y1, cfg.overlay_abs.w, cfg.overlay_abs.h);
   placeRect('#roi-insert',  cfg.insert_roi.x1,  cfg.insert_roi.y1,  cfg.insert_roi.w,  cfg.insert_roi.h );
 
+  // legacy slot ROI: still shown as a draggable rect derived from center+size
   const [cx,cy] = cfg.slot_center, [sw,sh] = cfg.slot_roi;
   placeRect('#roi-slot', cx - Math.floor(sw/2), cy - Math.floor(sh/2), sw, sh);
 
-  const [sx,sy] = cfg.slot_status;
-  placeRect('#roi-slot-status', sx - Math.floor(STATUS_W/2), sy - Math.floor(STATUS_H/2), STATUS_W, STATUS_H);
+  // slot_status ROI from dict (or legacy fallback)
+  const ssr = ssrFromCfg(cfg);
+  placeRect('#roi-slot-status', ssr.x1, ssr.y1, ssr.w, ssr.h);
+  STATUS_W = ssr.w; STATUS_H = ssr.h;
 
   // points
   placePt('#pt-slot-center', cfg.slot_center[0], cfg.slot_center[1]);
-  placePt('#pt-slot-status', cfg.slot_status[0], cfg.slot_status[1]);
+  // keep showing center of slot_status for reference
+  const sx = ssr.x1 + Math.floor(ssr.w/2), sy = ssr.y1 + Math.floor(ssr.h/2);
+  placePt('#pt-slot-status', sx, sy);
   placePt('#pt-upg', cfg.upgrade_btn[0], cfg.upgrade_btn[1]);
   for(let i=1;i<=6;i++){ const [x,y] = cfg.items[i-1] || [0,0]; placePt('#pt-item-'+i, x,y); }
 
@@ -190,17 +209,21 @@ function placeAll(){
 /* ---------- Form fill/collect ---------- */
 function fillForm(cfg){
   lastCfg = JSON.parse(JSON.stringify(cfg));
-  STATUS_W = (cfg.slot_status_roi && cfg.slot_status_roi[0]) ? cfg.slot_status_roi[0] : 80;
-  STATUS_H = (cfg.slot_status_roi && cfg.slot_status_roi[1]) ? cfg.slot_status_roi[1] : 80;
+  const ssr = ssrFromCfg(cfg);
+  STATUS_W = ssr.w; STATUS_H = ssr.h;
   placeAll();
 }
+
 function collectForm(){
+  // Build slot_status_roi as dict (preferred schema), keep legacy helpers for compat/export.
+  const ssr = ssrFromCfg(CFG);
+  const center = [ssr.x1 + Math.floor(ssr.w/2), ssr.y1 + Math.floor(ssr.h/2)];
   return {
-    device: CFG.device,                      /* shared config: device ในที่นี้ไม่ได้ใช้บันทึก */
+    device: CFG.device,
     slot_center: CFG.slot_center,
-    slot_status: CFG.slot_status,
-    slot_roi:    CFG.slot_roi,
-    slot_status_roi: [STATUS_W, STATUS_H],
+    slot_status: center,                // keep center for compat/UX
+    slot_roi:    CFG.slot_roi,          // legacy size (still exported)
+    slot_status_roi: { x1:ssr.x1, y1:ssr.y1, w:ssr.w, h:ssr.h },  // NEW: dict
     overlay_abs: CFG.overlay_abs,
     insert_roi:  CFG.insert_roi,
     upgrade_btn: CFG.upgrade_btn,
@@ -253,42 +276,56 @@ function enableDragResize(){
   makeRectDrag('#roi-overlay', ()=>CFG.overlay_abs, v=>CFG.overlay_abs=v);
   makeRectDrag('#roi-insert',  ()=>CFG.insert_roi,  v=>CFG.insert_roi=v);
 
-  // slot (center+size)
+  // slot (center+size) legacy box
   (function(){
     const getter = ()=> { const [cx,cy]=CFG.slot_center, [sw,sh]=CFG.slot_roi; return {x1:cx-Math.floor(sw/2),y1:cy-Math.floor(sh/2),w:sw,h:sh}; };
     const setter = (v)=> { CFG.slot_center=[v.x1+Math.floor(v.w/2), v.y1+Math.floor(v.h/2)]; CFG.slot_roi=[v.w,v.h]; };
     makeRectDrag('#roi-slot', getter, setter);
   })();
 
-  // slot_status ROI (move + resize)
+  // slot_status ROI (move + resize) — always save as dict {x1,y1,w,h}
   (function(){
     const el = document.getElementById('roi-slot-status'); if(!el) return; const h = el.querySelector('.handle');
     let mode=null, s={};
+
+    // MOVE
     el.onmousedown = (ev)=>{
       ev.preventDefault(); mode='move';
       const sc = r(); const rect = el.getBoundingClientRect();
       s = {startX:ev.clientX,startY:ev.clientY, offLeft:sc.offLeft,offTop:sc.offTop, x:rect.left-sc.offLeft, y:rect.top-sc.offTop, w:rect.width, h:rect.height};
-      document.onmousemove = (e)=>{ el.style.left = (s.x + (e.clientX - s.startX)) + 'px'; el.style.top = (s.y + (e.clientY - s.startY)) + 'px'; };
+      document.onmousemove = (e)=>{
+        el.style.left = (s.x + (e.clientX - s.startX)) + 'px';
+        el.style.top  = (s.y + (e.clientY - s.startY)) + 'px';
+      };
       document.onmouseup = ()=>{
         document.onmousemove=null; document.onmouseup=null;
         const rect2 = el.getBoundingClientRect(); const sc2 = r();
         const rx = rect2.left - sc2.offLeft, ry = rect2.top - sc2.offTop;
         const [x1,y1] = px2scr(rx, ry); const [w,h] = px2scr(rect2.width, rect2.height);
-        STATUS_W=w; STATUS_H=h; CFG.slot_status=[x1+Math.floor(w/2), y1+Math.floor(h/2)]; CFG.slot_status_roi=[STATUS_W, STATUS_H];
+        STATUS_W=w; STATUS_H=h;
+        CFG.slot_status_roi = { x1, y1, w, h };                                  // save as dict
+        CFG.slot_status = [ x1 + Math.floor(w/2), y1 + Math.floor(h/2) ];        // keep center
         placeAll();
       };
     };
+
+    // RESIZE
     if(h) h.onmousedown = (ev)=>{
       ev.preventDefault(); ev.stopPropagation();
-      const sc = r(); const rect = el.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       s = {startX:ev.clientX,startY:ev.clientY, w:rect.width, h:rect.height};
-      document.onmousemove = (e)=>{ el.style.width = Math.max(10, s.w + (e.clientX - s.startX)) + 'px'; el.style.height = Math.max(10, s.h + (e.clientY - s.startY)) + 'px'; };
+      document.onmousemove = (e)=>{
+        el.style.width  = Math.max(10, s.w + (e.clientX - s.startX)) + 'px';
+        el.style.height = Math.max(10, s.h + (e.clientY - s.startY)) + 'px';
+      };
       document.onmouseup = ()=>{
         document.onmousemove=null; document.onmouseup=null;
         const rect2 = el.getBoundingClientRect(); const sc2 = r();
         const rx = rect2.left - sc2.offLeft, ry = rect2.top - sc2.offTop;
         const [x1,y1] = px2scr(rx, ry); const [w,h] = px2scr(rect2.width, rect2.height);
-        STATUS_W=w; STATUS_H=h; CFG.slot_status=[x1+Math.floor(w/2), y1+Math.floor(h/2)]; CFG.slot_status_roi=[STATUS_W, STATUS_H];
+        STATUS_W=w; STATUS_H=h;
+        CFG.slot_status_roi = { x1, y1, w, h };                                  // save as dict
+        CFG.slot_status = [ x1 + Math.floor(w/2), y1 + Math.floor(h/2) ];
         placeAll();
       };
     };

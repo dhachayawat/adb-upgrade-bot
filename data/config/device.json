@@ -10,7 +10,7 @@
       "id": "d2",
       "name": "ดาบ121",
       "device": "host.docker.internal:5595",
-      "target_level": 5
+      "target_level": 6
     }
   ]
 }
