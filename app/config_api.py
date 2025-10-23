@@ -319,6 +319,36 @@ def api_device_logs(device_id: str):
     text = LOG.get_text(lines)  # ถ้าต้องการกรองด้วย device_id ต้องปรับที่ที่เขียน log ให้มี prefix
     return jsonify({"text": text})
 
+
+@bp_api.get("/devices/<device_id>/weblogs")
+def api_device_weblogs(device_id: str):
+    """
+    คืน rich logs (HTML) สำหรับอุปกรณ์ที่ระบุ
+    รูปแบบผลลัพธ์: [{ts, dev, html, lvl}, ...]
+    - ts  : UNIX epoch (seconds, float)
+    - dev : device id
+    - html: สตริง HTML ที่ sanitize แล้วค่อยเรนเดอร์ฝั่ง UI
+    - lvl : "INFO" | "WARN" | "ERROR"
+    """
+    init_api()
+    lines = int(request.args.get("lines", "400") or 400)
+    try:
+        data = LOG.web_dump(lines=lines, device=device_id)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
+@bp_api.delete("/devices/<device_id>/weblogs")
+def api_device_weblogs_clear(device_id: str):
+    init_api()
+    try:
+        removed = LOG.web_clear(device=device_id)
+        return jsonify({"ok": True, "removed": removed})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ---------- Dashboard (รวม) ----------
 @bp_api.get("/dashboard")
 def api_dashboard():

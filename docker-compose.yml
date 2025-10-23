@@ -6,7 +6,7 @@ services:
 
     environment:
       DEVICE: "host.docker.internal:5565"
-
+      MAX_ITEM_TIME_SEC: "0"
       ADB_RETRY_MAX: "6"
       ADB_RETRY_SLEEP: "0.6"
       ADB_TAP_LOCAL_RETRY: "5"
@@ -15,6 +15,8 @@ services:
       ADB_SWIPE_BACKOFF: "0.6"
       POST_INSERT_SETTLE: "0.5"
       DISABLE_TONE_DETECT: "1"
+      
+      CONF_PLUS_CLS_THR: "0.96"
 
       LOG_LEVEL: "INFO"   # หรือ "DEBUG" ถ้าต้องละเอียด
       LOG_DIR: "/app/logs"
@@ -24,6 +26,22 @@ services:
       OVERLAY_Y1: "170"
       OVERLAY_W:  "560"
       OVERLAY_H:  "320"
+
+      OVERLAY_MIN_WAIT: "0.25"
+      OVERLAY_MAX_WAIT: "1.80"
+      OVERLAY_POLL_INTERVAL: "0.12"
+      OVERLAY_MOTION_THR: "0.015"
+
+      SUCCESS_COLOR_MIN: "0.06"
+      FAIL_COLOR_MIN: "0.06"
+
+      CONF_SUCCESS_THR: "0.83"
+      CONF_FAIL_THR: "0.83"
+
+      OVERLAY_WEIGHT_OCR: "0.50"
+      OVERLAY_WEIGHT_TM: "0.30"
+      OVERLAY_WEIGHT_COLOR: "0.20"
+      OVERLAY_CONF_MARGIN: "0.15"
 
       SAVE_SCREENCAP: "0"
       CACHE_DIR: "/app/cache"
@@ -73,8 +91,6 @@ services:
       CONF_SLOT_EMPTY_THR: "0.85"
       CONF_SLOT_EMPTY_UNSURE: "0.75"
       CONF_PLUS5_THR: "0.83"
-      CONF_FAIL_THR: "0.80"
-      CONF_SUCCESS_THR: "0.80"
 
       DEBUG: "1"   # ตั้งเป็น "1" ชั่วคราวถ้าต้องการรูป debug
     ports:

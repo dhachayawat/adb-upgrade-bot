@@ -5,6 +5,7 @@ import os
 import re, time
 import cv2
 import numpy as np
+import html as _html  # สำหรับสร้าง HTML ไปโชว์บนเว็บ
 
 from .core.adb_adapter import ADBAdapter
 from .config_store import ConfigStore
@@ -63,6 +64,29 @@ _CONF_INSERT_THR = float(_CFG.get("conf_insert_thr", os.getenv("CONF_INSERT_THR"
 _POST_UPGRADE_WAIT = float(os.getenv("POST_UPGRADE_WAIT_SEC", "1.0"))
 _MAX_ITEM_TIME_SEC = int(os.getenv("MAX_ITEM_TIME_SEC", "30"))
 _BREAK_LEVEL_MIN   = int(_CFG.get("break_level_min", 4))
+
+# ===================== Web UI log helpers =====================
+def _lv_color(lv: Optional[int], target: int) -> str:
+    if lv is None:
+        return "#9e9e9e"   # เทา
+    if lv >= target:
+        return "#43a047"   # เขียว
+    if lv >= (target - 1):
+        return "#fb8c00"   # ส้ม
+    return "#e53935"       # แดง
+
+def _lv_html(lv: Optional[int], target: int) -> str:
+    txt = "none" if lv is None else str(lv)
+    col = _lv_color(lv, target)
+    return f'<span class="adb-lv" style="color:{col};font-weight:600">{_html.escape(txt)}</span>'
+
+def _log_web(dev_id: str, html_msg: str, level: str = "INFO"):
+    """ส่งข้อความ HTML ไปยัง Web UI log; ถ้าไม่มี rtlog.web จะ fallback เป็น LOG.i"""
+    try:
+        from .rtlog import web as _rtlog_web
+        _rtlog_web(dev_id, html_msg, level.upper())
+    except Exception:
+        LOG.i(f"[WEB-LOG fallback] {html_msg}")
 
 # ===================== OCR / Image helpers (ported & adapted) =====================
 try:
@@ -124,288 +148,159 @@ def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, 
 
     gx, gy = ox + pt[0], oy + pt[1]
     LOG.i(f"[INSERT] click at ({gx},{gy}) score={sc:.3f} thr={_CONF_INSERT_THR}")
+    _log_web(adb.serial if hasattr(adb, "serial") else "dev", f'INSERT: click @({gx},{gy})')
     adb.tap(gx, gy)
     return True
 
+# ======== Snapshot for icon-level reading ========
 def _save_item_lv_snap(crop, roi, thr, x0, y0, x1, y1, w, h, level, method, debug_tag: str):
     try:
         dbgdir = _CFG.get("debug_dir", "/app/cache/debug")
         outdir = os.path.join(dbgdir, "item_lv")
         os.makedirs(outdir, exist_ok=True)
         ts = int(time.time() * 1000)
-
-        # 1) crop ทั้งกรอบ 60x60
         cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_crop_{method}_lv{level}.png"), crop)
-
-        # 2) roi (มุมขวาบนของ crop)
         cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_roi_{method}_lv{level}.png"), roi)
-
-        # 3) threshold สำหรับ OCR
         if thr is not None:
             cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_thr_{method}_lv{level}.png"), thr)
-
-        # 4) กล่อง overlay ให้เห็นตำแหน่งที่ใช้บน crop
         vis = crop.copy()
-        # วาดกรอบของ ROI ภายใน crop
         cv2.rectangle(vis, (x1 - x0, y1 - y0), (x1 - x0 + w, y1 - y0 + h), (0, 255, 0), 2)
         cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_box_{method}_lv{level}.png"), vis)
     except Exception as e:
         LOG.w(f"[item_lv_snap] save fail: {e}")
 
-_PLUS_RE = re.compile(r"\+?\s*(\d{1,2})")
+# ======== Dataset helpers ========
+_DATASET_BASE = _CFG.get("dataset_dir", os.getenv("DATASET_DIR", "/app/data/dataset/level"))
+_NORM_SIZE = (32, 28)  # ขนาด normalize สำหรับเทมเพลต bank
 
-def _read_level_from_icon_topright(
-    adb: ADBAdapter,
-    item_center: Tuple[int,int],
-    box_size: int = 60,
-    debug_tag: str = "item"
-) -> Optional[int]:
+def _norm_roi_size(img, size=_NORM_SIZE):
+    return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+
+def _save_plus_dataset(roi_bgr: np.ndarray, *, level: Optional[int], method: str, debug_tag: str):
     """
-    อ่านระดับไอเทมจากมุมขวาบนของไอคอนในช่อง
-    ขั้นตอน:
-      PASS A: yellow-mask + template matching (แม่น/เร็ว)
-      PASS B: RGB template matching (สำรอง)
-      PASS C: OCR เฉพาะ +0123456789 (สำรองสุดท้าย)
-    จะบันทึกสแน็ปไว้ที่ {debug_dir}/item_lv/ และ (ถ้าตั้งค่า) เก็บ ROI ลง dataset:
-      - MISS  -> {DATASET_DIR}/plus_unlabeled/
-      - HIT 1..6 (เมื่อ SAVE_DATASET_ALL=1) -> {DATASET_DIR}/plus{n}/
-    ต้องมี helper/ทรัพยากร: _yellow_digit_mask, _save_item_lv_snap, _save_plus_dataset, CV.read_tpl(), _grab, _crop_center
+    level=None หรือ -1  -> เก็บที่ plus_unlabeled/
+    level in 1..6       -> เก็บที่ plus{n}/ (เมื่อ SAVE_DATASET_ALL=1)
     """
-    cx, cy = item_center
-    img = _grab(adb)
-    crop, (x0, y0) = _crop_center(img, cx, cy, box_size, box_size)
-
-    # ROI: มุมขวาบนของไอคอน
-    h, w = crop.shape[:2]
-    rx0 = int(w * float(os.getenv("ICON_ROI_XRATIO", "0.55")))   # เริ่ม 55% ของความกว้าง
-    ry0 = 0
-    rw  = w - rx0
-    rh  = int(h * float(os.getenv("ICON_ROI_HRATIO", "0.50")))   # สูง 50% บนสุด
-    roi = crop[ry0:ry0+rh, rx0:rx0+rw].copy()
-    tag = f"{debug_tag}_roi"
-
-    # ---------- PASS A: Template matching บน "มาสก์สีเหลือง" ----------
-    ymask = _yellow_digit_mask(roi)  # -> uint8 0/255
-    best_lvl, best_sc = None, -1.0
-    tm_mask_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.78"))  # เกณฑ์บนมาสก์
-
-    for n in range(1, 10):
-        tpl = CV.read_tpl(f"plus{n}.png")
-        if tpl is None:
-            continue
-        # แปลง template เป็นไบนารีเพื่อใช้ match กับมาสก์
-        if tpl.ndim == 3:
-            tpl = cv2.cvtColor(tpl, cv2.COLOR_BGR2GRAY)
-        _, tpl_bin = cv2.threshold(tpl, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        res = cv2.matchTemplate(ymask, tpl_bin, cv2.TM_CCOEFF_NORMED)
-        _, sc, _, _ = cv2.minMaxLoc(res)
-        if sc > best_sc:
-            best_sc = sc
-            best_lvl = n
-
-    if best_lvl is not None and best_sc >= tm_mask_thr:
-        LOG.i(f"[ICON-PLUS MASK] level=+{best_lvl} score={best_sc:.3f} (thr={tm_mask_thr})")
-        if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
-            _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "mask_tm", tag)
-        if 1 <= best_lvl <= 6:
-            _save_plus_dataset(roi, level=best_lvl, method="mask_tm", debug_tag=tag)
-        return best_lvl
-
-    # ---------- PASS B: Template matching (RGB ปกติ) ----------
-    best_lvl, best_sc = None, -1.0
-    tm_rgb_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.82"))
-    for n in range(1, 10):
-        tpl = CV.read_tpl(f"plus{n}.png")
-        if tpl is None:
-            continue
-        pt, sc = CV.match_center_multiscale(
-            roi, tpl, thr=tm_rgb_thr, scales=(0.90, 0.95, 1.00, 1.05, 1.10)
-        )
-        if pt and sc > best_sc:
-            best_sc = sc
-            best_lvl = n
-
-    if best_lvl is not None and best_sc >= tm_rgb_thr:
-        LOG.i(f"[ICON-PLUS TM] level=+{best_lvl} score={best_sc:.3f} (thr={tm_rgb_thr})")
-        if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
-            _save_item_lv_snap(crop, roi, None, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "rgb_tm", tag)
-        if 1 <= best_lvl <= 6:
-            _save_plus_dataset(roi, level=best_lvl, method="rgb_tm", debug_tag=tag)
-        return best_lvl
-
-    # ---------- PASS C: OCR (+0123456789) ----------
-    if _HAVE_TESS:
-        g  = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        # top-hat เน้นส่วนสว่างเล็ก ๆ (ตัวเลข) ก่อน threshold
-        tophat = cv2.morphologyEx(g, cv2.MORPH_TOPHAT, np.ones((3,3), np.uint8), iterations=1)
-        thr = cv2.adaptiveThreshold(tophat, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                    cv2.THRESH_BINARY_INV, 31, 9)
-        cfg = "--psm 7 --oem 1 -c tessedit_char_whitelist=+0123456789"
-        raw = pytesseract.image_to_string(thr, lang="eng", config=cfg)
-        text = (raw or "").strip().replace("\n", " ")
-        m = _PLUS_RE.search(text)
-        if m:
-            try:
-                cand = int(m.group(1))
-                if 0 <= cand <= 15:
-                    LOG.i(f"[ICON-PLUS OCR] text='{text}' → level≈+{cand}")
-                    if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
-                        _save_item_lv_snap(crop, roi, thr, x0, y0, x0+rx0, y0+ry0, rw, rh, cand, "ocr", tag)
-                    if 1 <= cand <= 6:
-                        _save_plus_dataset(roi, level=cand, method="ocr", debug_tag=tag)
-                    return cand
-            except Exception:
-                pass
-
-    LOG.i("[ICON-PLUS] ไม่พบระดับ (mask/rgb/OCR ไม่ผ่าน)")
-    if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
-        _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, -1, "miss", tag)
-    _save_plus_dataset(roi, level=None, method="miss", debug_tag=tag)  # เก็บไว้ให้คุณ label เอง
-    return None
-
-
-
-def _find_tooltip_box(roi_bgr: np.ndarray) -> Optional[Tuple[int,int,int,int]]:
-    """
-    หา tooltip box ภายใน ROI:
-    1) ทำ HSV แล้วหาโซนมืด (พื้นดำโปร่ง ๆ) ด้วย threshold
-    2) ปรับนอยซ์ (morph close/open)
-    3) เลือกคอมโพเนนต์ที่ใหญ่สุดที่มีอัตราส่วน/ขนาดสมเหตุผล
-    คืนค่าเป็น (x, y, w, h) ในพิกัดของ ROI หรือ None ถ้าไม่พบ
-    """
-    hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
-    # ค่าพื้น ๆ สำหรับพื้นดำโปร่ง: V ต่ำ, S ไม่จำเป็นต้องต่ำมาก
-    v_max = int(os.getenv("TOOLTIP_V_MAX", "80"))
-    s_max = int(os.getenv("TOOLTIP_S_MAX", "255"))
-    mask_dark = cv2.inRange(hsv, (0, 0, 0), (180, s_max, v_max))
-
-    # ปรับนอยซ์ให้เป็นก้อนสี่เหลี่ยม
-    k = int(os.getenv("TOOLTIP_KERNEL", "5"))
-    kernel = np.ones((k, k), np.uint8)
-    mask = cv2.morphologyEx(mask_dark, cv2.MORPH_CLOSE, kernel, iterations=1)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel, iterations=1)
-
-    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
-        return None
-
-    h, w = roi_bgr.shape[:2]
-    area_img = w * h
-    best = None
-    best_score = -1.0
-
-    for c in cnts:
-        x, y, ww, hh = cv2.boundingRect(c)
-        area = ww * hh
-        if area < area_img * 0.02:   # กรองชิ้นเล็ก ๆ <2% ของ ROI
-            continue
-        # tooltip มักจะผอมยาวแนวนอน
-        ar = ww / max(1.0, float(hh))
-        if ar < 2.2:                 # ถ้าสั้นเกินไปไม่น่าใช่ tooltip
-            continue
-        # ขอบกล่องควรอยู่ใน ROI ไม่ติดขอบเกินไป
-        pad_ok = (x > 1 and y > 1 and (x+ww) < (w-1) and (y+hh) < (h-1))
-        if not pad_ok:
-            continue
-
-        # ให้คะแนนตามพื้นที่และอัตราส่วน (อยากได้ก้อนยาวและใหญ่)
-        score = area * (0.6 + 0.4 * min(ar/6.0, 1.0))
-        if score > best_score:
-            best_score = score
-            best = (x, y, ww, hh)
-
-    return best
-
-def _read_bracket_level_from_status(adb: ADBAdapter,
-                                    slot_status_roi_rect: Tuple[int, int, int, int],
-                                    debug_tag: Optional[str] = "preinsert") -> Optional[int]:
-    img = _grab(adb)
-    roi, (ox, oy) = _crop_rect(img, slot_status_roi_rect)
-
-    # 1) หา tooltip box ทั้งโซน (ใช้ที่เราคุยกันรอบก่อน)
-    tip_rect = _find_tooltip_box(roi) if '_find_tooltip_box' in globals() else None
-    if tip_rect:
-        tx, ty, tw, th = tip_rect
-        focus = roi[ty:ty+th, tx:tx+tw].copy()
-        src = "tooltip"
-    else:
-        focus = roi
-        tx, ty, tw, th = 0, 0, roi.shape[1], roi.shape[0]
-        src = "roi-fallback"
-
-    # 2) เตรียมภาพให้ชัดสำหรับฟอนต์ไทยบนพื้นมืด
-    g  = cv2.cvtColor(focus, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    g  = clahe.apply(g)
-    thr = cv2.adaptiveThreshold(g, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                cv2.THRESH_BINARY_INV, 31, 9)
-    thr = cv2.morphologyEx(thr, cv2.MORPH_OPEN, np.ones((2,2), np.uint8), iterations=1)
-
-    if not _HAVE_TESS:
-        return None
-
-    # -------- Pass A: OCR ไทย+อังกฤษ (ไม่ whitelist) แล้ว regex หาวงเล็บ+ตัวเลข --------
-    cfg_a = "--psm 7 --oem 1"
-    raw_a = pytesseract.image_to_string(thr, lang="tha+eng", config=cfg_a)
-    text_a = (raw_a or "").strip().replace("\n", " ")
-    m = _BRACKET_NUM_RE.search(text_a)
-    if m:
-        try:
-            lvl = int(m.group(1))
-            LOG.i(f"[OCR-THA/ENG] src={src} text='{text_a}' → level={lvl}")
-            _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag)
-            return lvl
-        except Exception:
-            pass  # ลองเฟสถัดไป
-
-    # -------- Pass B: หาเลขกลุ่มขวาสุด (กรณีไม่มีวงเล็บถูกอ่าน) --------
-    # โฟกัสเฉพาะ 35% ขวาสุด
-    h, w = thr.shape[:2]
-    rx = int(w * 0.65)
-    right_thr = thr[:, rx:].copy()
-    cfg_b = "--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789"
-    raw_b = pytesseract.image_to_string(right_thr, lang="eng", config=cfg_b)
-    text_b = (raw_b or "").strip().replace("\n", " ")
-    # เอากลุ่มตัวเลขท้ายสุด 1–2 หลัก
-    m2 = re.search(r"(\d{1,2})\s*$", text_b)
-    if m2:
-        try:
-            cand = int(m2.group(1))
-            # เงื่อนไขป้องกันพลาด: ต้องมีตัวอักษร/ช่องว่างก่อนหน้าใน focus (เหมือนชื่อไอเทม)
-            # และค่าควรอยู่ในช่วง 0–15 (สมมติระดับสูงสุดไม่เกินนี้)
-            if 0 <= cand <= 15:
-                LOG.i(f"[OCR-rightmost-digits] src={src} text='{text_b}' → level≈{cand} (no brackets)")
-                _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag)
-                return cand
-        except Exception:
-            pass
-
-    LOG.i(f"[OCR] ไม่พบระดับ → ถือว่าไม่มีระดับ (src={src}, textA='{text_a}', textB='{text_b}')")
-    _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag)
-    return None
-
-
-# ======== Debug saver (safe path, unique name) ========
-def _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag):
-    if os.getenv("SAVE_SCREENCAP", "1") == "0":
-        return
     try:
-        dbgdir = _CFG.get("debug_dir", "/app/cache/debug")
-        os.makedirs(dbgdir, exist_ok=True)
-        ts = int(time.time()*1000)
-        cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_roi_{ts}.png"), roi)
-        cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_focus_{ts}.png"), focus)
-        cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_thr_{ts}.png"), thr)
-        if tip_rect:
-            tx, ty, tw, th = tip_rect
-            box = roi.copy()
-            cv2.rectangle(box, (tx,ty), (tx+tw,ty+th), (0,255,0), 2)
-            cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_box_{ts}.png"), box)
-    except Exception as e:
-        LOG.w(f"[debug dump] save fail: {e}")
+        if level is None or level < 1 or level > 6:
+            sub = "plus_unlabeled"
+        else:
+            if os.getenv("SAVE_DATASET_ALL", "0") != "1":
+                return  # ไม่เก็บกรณีอ่านได้ เว้นสั่งไว้
+            sub = f"plus{level}"
 
-# ======== Slot empty checks (after insert / before upgrade taps) ========
+        outdir = os.path.join(_DATASET_BASE, sub)
+        os.makedirs(outdir, exist_ok=True)
+
+        ts = int(time.time() * 1000)
+        p_ori = os.path.join(outdir, f"{debug_tag}_{ts}_{method}_ori.png")
+        cv2.imwrite(p_ori, roi_bgr)
+
+        roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+        norm = _norm_roi_size(roi_gray)
+        p_norm = os.path.join(outdir, f"{debug_tag}_{ts}_{method}_norm.png")
+        cv2.imwrite(p_norm, norm)
+
+        LOG.i(f"[dataset] saved → {p_ori} , {p_norm}")
+    except Exception as e:
+        LOG.w(f"[dataset] save fail: {e}")
+
+# === Template bank (loaded from dataset) ===
+_PLUS_TPL_BANK: Dict[int, list] = {}  # {level: [gray ndarray templates ...]}
+
+def _load_plus_template_bank(base_dir: Optional[str] = None) -> Dict[int, list]:
+    """
+    โหลด bank ของเทมเพลตจาก DATASET_DIR/plus{1..6}/*_norm.png
+    """
+    base = base_dir or _DATASET_BASE
+    bank: Dict[int, list] = {}
+    loaded = []
+    for n in range(1, 7):  # ใช้แค่ 1..6 ตามที่กำหนด
+        d = os.path.join(base, f"plus{n}")
+        if not os.path.isdir(d):
+            continue
+        tpls = []
+        for fn in os.listdir(d):
+            if not fn.endswith("_norm.png"):
+                continue
+            path = os.path.join(d, fn)
+            im = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if im is None:
+                continue
+            im = _norm_roi_size(im)
+            tpls.append(im)
+        if tpls:
+            bank[n] = tpls
+            loaded.append(f"+{n}:{len(tpls)}")
+    LOG.i("[plus-bank] loaded → " + (", ".join(loaded) if loaded else "(empty)"))
+    return bank
+
+def _best_level_by_bank_on_mask(ymask_norm: np.ndarray) -> Tuple[Optional[int], float]:
+    best_lvl, best_sc = None, -1.0
+    for lvl, tpls in _PLUS_TPL_BANK.items():
+        for tpl in tpls:
+            res = cv2.matchTemplate(ymask_norm, tpl, cv2.TM_CCOEFF_NORMED)
+            _, sc, _, _ = cv2.minMaxLoc(res)
+            if sc > best_sc:
+                best_sc, best_lvl = sc, lvl
+    return best_lvl, best_sc
+
+def _best_level_by_bank_on_gray(roi_gray_norm: np.ndarray) -> Tuple[Optional[int], float]:
+    best_lvl, best_sc = None, -1.0
+    for lvl, tpls in _PLUS_TPL_BANK.items():
+        for tpl in tpls:
+            res = cv2.matchTemplate(roi_gray_norm, tpl, cv2.TM_CCOEFF_NORMED)
+            _, sc, _, _ = cv2.minMaxLoc(res)
+            if sc > best_sc:
+                best_sc, best_lvl = sc, lvl
+    return best_lvl, best_sc
+
+# ======== Dataset classifier (PASS 0) ========
+_PLUS_CLS_CENTROIDS: Dict[int, np.ndarray] = {}  # level -> mean feature vector
+
+def _feat_from_norm(gray_norm: np.ndarray) -> np.ndarray:
+    # binary + gray flatten + L2 normalize
+    _, bw = cv2.threshold(gray_norm, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    g = (gray_norm.astype(np.float32) / 255.0).ravel()
+    b = (bw.astype(np.float32) / 255.0).ravel()
+    v = np.concatenate([g, b], axis=0)
+    n = np.linalg.norm(v) + 1e-8
+    return v / n
+
+def _build_plus_classifier(base_dir: Optional[str] = None) -> Dict[int, np.ndarray]:
+    base = base_dir or _DATASET_BASE
+    cents: Dict[int, np.ndarray] = {}
+    for lvl in range(1, 7):
+        d = os.path.join(base, f"plus{lvl}")
+        if not os.path.isdir(d):
+            continue
+        feats = []
+        for fn in os.listdir(d):
+            if not fn.endswith("_norm.png"):
+                continue
+            path = os.path.join(d, fn)
+            im = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if im is None:
+                continue
+            im = _norm_roi_size(im)
+            feats.append(_feat_from_norm(im))
+        if feats:
+            cents[lvl] = np.mean(np.stack(feats, axis=0), axis=0)
+    LOG.i("[plus-cls] centroids → " + (", ".join([f"+{k}" for k in sorted(cents.keys())]) if cents else "(empty)"))
+    return cents
+
+def _predict_level_by_classifier(roi_gray_norm: np.ndarray) -> Tuple[Optional[int], float]:
+    if not _PLUS_CLS_CENTROIDS:
+        return None, 0.0
+    q = _feat_from_norm(roi_gray_norm)
+    best_lvl, best_sim = None, -1.0
+    for lvl, c in _PLUS_CLS_CENTROIDS.items():
+        sim = float(np.dot(q, c) / (np.linalg.norm(c) + 1e-8))  # cosine
+        if sim > best_sim:
+            best_sim, best_lvl = sim, lvl
+    return best_lvl, best_sim
+
+# ===================== Slot empty checks (after insert / before upgrade taps) =====================
 def _is_slot_empty(adb: ADBAdapter, slot_center: Tuple[int,int], slot_roi_size: Tuple[int,int]) -> bool:
     cx, cy = slot_center
     sw, sh = slot_roi_size
@@ -431,90 +326,175 @@ def _is_slot_empty(adb: ADBAdapter, slot_center: Tuple[int,int], slot_roi_size: 
 def _yellow_digit_mask(bgr: np.ndarray) -> np.ndarray:
     """
     คืนค่ามาสก์สี (uint8 0/255) สำหรับข้อความ +n สีเหลืองเขียว
-    ปรับได้ด้วย ENV:
-      Y_H1, Y_H2 (0..179), Y_S_MIN (0..255), Y_V_MIN (0..255)
-    ดีฟอลต์ครอบช่วงเหลือง->เหลืองเขียว
+    ปรับได้ด้วย ENV: Y_H1, Y_H2, Y_S_MIN, Y_V_MIN
     """
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
-    h1 = int(os.getenv("Y_H1", "18"))   # ~18
-    h2 = int(os.getenv("Y_H2", "45"))   # ~45
+    h1 = int(os.getenv("Y_H1", "18"))
+    h2 = int(os.getenv("Y_H2", "45"))
     s  = int(os.getenv("Y_S_MIN", "120"))
     v  = int(os.getenv("Y_V_MIN", "140"))
     mask = cv2.inRange(hsv, (h1, s, v), (h2, 255, 255))
-    # ทำให้สภาพอักษรต่อเนื่องขึ้น
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2,2), np.uint8), iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((2,2), np.uint8), iterations=1)
     return mask
 
-
-# ======== Overlay result detection (OCR -> template -> color) ========
+# ======== Overlay detector (smart fused) ========
 def _overlay_detect(adb: ADBAdapter, overlay_rect: Tuple[int,int,int,int]) -> Optional[str]:
     """
-    return 'success' / 'fail' / None
+    return: 'success' / 'fail' / None
+
+    เวอร์ชัน smart:
+      - รอแบบไดนามิกด้วย OVERLAY_MIN_WAIT..OVERLAY_MAX_WAIT และ OVERLAY_POLL_INTERVAL
+      - ตรวจ motion + โทนสีเอฟเฟกต์ (อุ่น=fail, เย็น/ขาว=success) + template + OCR แล้วฟิวส์คะแนน
+      - ถ้าไม่มีสัญญาณ (สีต่ำ + motion ต่ำ) → ถือว่ายังไม่ upgrade → คืน None
     """
-    img = _grab(adb)
-    roi, _ = _crop_rect(img, overlay_rect)
-    thr = _binarize(roi)
+    def _color_scores(bgr_roi):
+        hsv = cv2.cvtColor(bgr_roi, cv2.COLOR_BGR2HSV)
+        # fail (อุ่น/ร้อน)
+        f_or_h1 = int(os.getenv("FAIL_ORANGE_H_MIN", _CFG.get("FAIL_ORANGE_H_MIN", 10)))
+        f_or_h2 = int(os.getenv("FAIL_ORANGE_H_MAX", _CFG.get("FAIL_ORANGE_H_MAX", 25)))
+        f_s     = int(os.getenv("FAIL_S_MIN",        _CFG.get("FAIL_S_MIN",        80)))
+        f_v     = int(os.getenv("FAIL_V_MIN",        _CFG.get("FAIL_V_MIN",        80)))
+        fail_orange = cv2.inRange(hsv, (f_or_h1, f_s, f_v), (f_or_h2, 255, 255))
+        f_r1 = cv2.inRange(hsv, (0,   f_s, f_v), (5,   255, 255))
+        f_r2 = cv2.inRange(hsv, (170, f_s, f_v), (180, 255, 255))
+        warm_mask = cv2.bitwise_or(fail_orange, cv2.bitwise_or(f_r1, f_r2))
+        # success (เย็น/ฟ้า)
+        s_h1 = int(os.getenv("SUCCESS_H_MIN", _CFG.get("SUCCESS_H_MIN", 90)))
+        s_h2 = int(os.getenv("SUCCESS_H_MAX", _CFG.get("SUCCESS_H_MAX", 140)))
+        s_s  = int(os.getenv("SUCCESS_S_MIN", _CFG.get("SUCCESS_S_MIN", 60)))
+        s_v  = int(os.getenv("SUCCESS_V_MIN", _CFG.get("SUCCESS_V_MIN", 80)))
+        cool_mask = cv2.inRange(hsv, (s_h1, s_s, s_v), (s_h2, 255, 255))
+        # success (ขาว)
+        w_s_max = int(os.getenv("SUCCESS_WHITE_S_MAX", _CFG.get("SUCCESS_WHITE_S_MAX", 40)))
+        w_v_min = int(os.getenv("SUCCESS_WHITE_V_MIN", _CFG.get("SUCCESS_WHITE_V_MIN", 200)))
+        white_mask = cv2.inRange(hsv, (0, 0, w_v_min), (180, w_s_max, 255))
+        area = max(1, bgr_roi.shape[0] * bgr_roi.shape[1])
+        warm_ratio  = float(cv2.countNonZero(warm_mask))  / float(area)
+        cool_ratio  = float(cv2.countNonZero(cool_mask))  / float(area)
+        white_ratio = float(cv2.countNonZero(white_mask)) / float(area)
+        return warm_ratio, cool_ratio, white_ratio
 
-    txt = _ocr_text(thr, psm=7)
-    if "สำเร็จ" in txt:
-        LOG.i("[overlay OCR] พบ 'สำเร็จ'")
-        return "success"
-    if "ล้มเหลว" in txt:
-        LOG.i("[overlay OCR] พบ 'ล้มเหลว'")
-        return "fail"
+    def _motion_score(prev_gray, cur_bgr):
+        g = cv2.cvtColor(cur_bgr, cv2.COLOR_BGR2GRAY)
+        if prev_gray is None:
+            return g, 0.0
+        diff = cv2.absdiff(g, prev_gray)
+        return g, float(np.mean(diff)) / 255.0
 
-    succ_thr = float(os.getenv("CONF_SUCCESS_THR", _CFG.get("CONF_SUCCESS_THR", 0.83)))
-    fail_thr = float(os.getenv("CONF_FAIL_THR", _CFG.get("CONF_FAIL_THR", 0.83)))
-
-    pt, sc = CV.match_center_multiscale(roi, CV.read_tpl("success.png"), thr=succ_thr, scales=(0.95, 1.00, 1.05))
-    if pt:
-        LOG.i("[overlay TM] success by template")
-        return "success"
-
-    pt, sc = CV.match_center_multiscale(roi, CV.read_tpl("fail.png"), thr=fail_thr, scales=(0.95, 1.00, 1.05))
-    if pt:
-        LOG.i("[overlay TM] fail by template")
-        return "fail"
-
-    # color heuristic
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    s_h1 = int(os.getenv("SUCCESS_H_MIN", _CFG.get("SUCCESS_H_MIN", 90)))
-    s_h2 = int(os.getenv("SUCCESS_H_MAX", _CFG.get("SUCCESS_H_MAX", 140)))
-    s_s  = int(os.getenv("SUCCESS_S_MIN", _CFG.get("SUCCESS_S_MIN", 60)))
-    s_v  = int(os.getenv("SUCCESS_V_MIN", _CFG.get("SUCCESS_V_MIN", 80)))
-    success_blue  = cv2.inRange(hsv, (s_h1, s_s, s_v), (s_h2, 255, 255))
-
-    w_s_max = int(os.getenv("SUCCESS_WHITE_S_MAX", _CFG.get("SUCCESS_WHITE_S_MAX", 40)))
-    w_v_min = int(os.getenv("SUCCESS_WHITE_V_MIN", _CFG.get("SUCCESS_WHITE_V_MIN", 200)))
-    success_white = cv2.inRange(hsv, (0, 0, w_v_min), (180, w_s_max, 255))
-    success_mask = cv2.bitwise_or(success_blue, success_white)
-
-    f_or_h1 = int(os.getenv("FAIL_ORANGE_H_MIN", _CFG.get("FAIL_ORANGE_H_MIN", 10)))
-    f_or_h2 = int(os.getenv("FAIL_ORANGE_H_MAX", _CFG.get("FAIL_ORANGE_H_MAX", 25)))
-    f_s     = int(os.getenv("FAIL_S_MIN", _CFG.get("FAIL_S_MIN", 80)))
-    f_v     = int(os.getenv("FAIL_V_MIN", _CFG.get("FAIL_V_MIN", 80)))
-    fail_orange = cv2.inRange(hsv, (f_or_h1, f_s, f_v), (f_or_h2, 255, 255))
-    f_r1 = cv2.inRange(hsv, (0,   f_s, f_v), (5,   255, 255))
-    f_r2 = cv2.inRange(hsv, (170, f_s, f_v), (180, 255, 255))
-    fail_mask = cv2.bitwise_or(fail_orange, cv2.bitwise_or(f_r1, f_r2))
-
-    area = max(1, roi.shape[0] * roi.shape[1])
-    succ_ratio = float(cv2.countNonZero(success_mask)) / float(area)
-    fail_ratio = float(cv2.countNonZero(fail_mask)) / float(area)
+    # --- พารามิเตอร์รอ/โพลล์ ---
+    min_wait   = float(os.getenv("OVERLAY_MIN_WAIT",   "0.25"))
+    max_wait   = float(os.getenv("OVERLAY_MAX_WAIT",   "1.80"))
+    poll_int   = float(os.getenv("OVERLAY_POLL_INTERVAL", "0.12"))
+    mot_thr    = float(os.getenv("OVERLAY_MOTION_THR", "0.015"))
 
     succ_min = float(os.getenv("SUCCESS_COLOR_MIN", _CFG.get("SUCCESS_COLOR_MIN", 0.06)))
-    fail_min = float(os.getenv("FAIL_COLOR_MIN", _CFG.get("FAIL_COLOR_MIN", 0.06)))
+    fail_min = float(os.getenv("FAIL_COLOR_MIN",    _CFG.get("FAIL_COLOR_MIN",    0.06)))
 
-    LOG.i(f"[overlay สี] success≈{succ_ratio:.3f}, fail≈{fail_ratio:.3f} (เกณฑ์ {succ_min:.2f}/{fail_min:.2f})")
-    if succ_ratio >= succ_min and fail_ratio < fail_min:
-        LOG.i("[overlay สี] ตัดสิน: success")
-        return "success"
-    if fail_ratio >= fail_min and succ_ratio < succ_min:
-        LOG.i("[overlay สี] ตัดสิน: fail")
-        return "fail"
-    LOG.i("[overlay] ยังไม่ชัดเจน")
-    return None
+    tm_succ_thr = float(os.getenv("CONF_SUCCESS_THR", _CFG.get("CONF_SUCCESS_THR", 0.83)))
+    tm_fail_thr = float(os.getenv("CONF_FAIL_THR",    _CFG.get("CONF_FAIL_THR",    0.83)))
+
+    w_ocr   = float(os.getenv("OVERLAY_WEIGHT_OCR",   "0.50"))
+    w_tm    = float(os.getenv("OVERLAY_WEIGHT_TM",    "0.30"))
+    w_color = float(os.getenv("OVERLAY_WEIGHT_COLOR", "0.20"))
+    margin  = float(os.getenv("OVERLAY_CONF_MARGIN",  "0.15"))
+
+    t0 = time.time()
+    prev_gray = None
+    seen_signal = False
+    best = dict(verdict=None, conf=0.0, ocr="", tm_s=0.0, tm_f=0.0,
+                warm=0.0, cool=0.0, white=0.0, motion=0.0)
+
+    # รอขั้นต่ำก่อนเริ่มอ่าน
+    while time.time() - t0 < min_wait:
+        time.sleep(0.02)
+
+    while time.time() - t0 < max_wait:
+        time.sleep(poll_int)
+        img = _grab(adb)
+        roi, _ = _crop_rect(img, overlay_rect)
+
+        # motion
+        prev_gray, mot = _motion_score(prev_gray, roi)
+
+        # สี
+        warm, cool, white = _color_scores(roi)
+        coolwhite = cool + white
+
+        # template (คะแนนดิบ 0..1)
+        _, scs = CV.match_center_multiscale(roi, CV.read_tpl("success.png"), thr=0.0, scales=(0.95,1.0,1.05))
+        _, scf = CV.match_center_multiscale(roi, CV.read_tpl("fail.png"),    thr=0.0, scales=(0.95,1.0,1.05))
+
+        # OCR
+        ocr_score_succ = ocr_score_fail = 0.0
+        ocr_txt = ""
+        if _HAVE_TESS:
+            thrimg = _binarize(roi)
+            ocr_txt = _ocr_text(thrimg, psm=7)
+            if "สำเร็จ" in ocr_txt: ocr_score_succ = 1.0
+            if "ล้มเหลว" in ocr_txt: ocr_score_fail = 1.0
+
+        # เห็นสัญญาณหรือยัง
+        color_hit = (coolwhite >= (succ_min*0.6)) or (warm >= (fail_min*0.6))
+        mot_hit   = (mot >= mot_thr)
+        if color_hit or mot_hit:
+            seen_signal = True
+
+        # รวมคะแนน
+        tm_s_n = max(0.0, (scs - tm_succ_thr) / max(1e-6, 1.0 - tm_succ_thr))
+        tm_f_n = max(0.0, (scf - tm_fail_thr) / max(1e-6, 1.0 - tm_fail_thr))
+
+        col_s = min(1.0, coolwhite / max(1e-6, succ_min)) if coolwhite >= succ_min else 0.0
+        col_f = min(1.0, warm      / max(1e-6, fail_min)) if warm      >= fail_min  else 0.0
+
+        sc_succ = (w_ocr*ocr_score_succ) + (w_tm*tm_s_n) + (w_color*col_s)
+        sc_fail = (w_ocr*ocr_score_fail) + (w_tm*tm_f_n) + (w_color*col_f)
+        conf = abs(sc_succ - sc_fail)
+
+        cand = None
+        if sc_succ - sc_fail > margin:
+            cand = "success"
+        elif sc_fail - sc_succ > margin:
+            cand = "fail"
+
+        if (cand is not None) and (conf > best["conf"]):
+            best.update(dict(verdict=cand, conf=float(min(1.0, conf)),
+                             ocr=ocr_txt, tm_s=float(scs), tm_f=float(scf),
+                             warm=float(warm), cool=float(cool), white=float(white), motion=float(mot)))
+
+        # ออกจากลูปเมื่อได้ verdict หลัง min_wait หรือถึง max_wait
+        if (best["verdict"] is not None) and (time.time() - t0 >= min_wait):
+            break
+
+    # ไม่มีสัญญาณเลย → ยังไม่ upgrade
+    if best["verdict"] is None and not seen_signal:
+        LOG.i("[overlay smart] no-signal: screen steady / no effect → undecided")
+        return None
+
+    # ยังไม่มี verdict แต่เห็นสัญญาณ → ใช้สีชี้ขาดแบบ fallback
+    if best["verdict"] is None:
+        if best["warm"] > (best["cool"] + best["white"]):
+            best["verdict"], best["conf"] = "fail", 0.4
+        elif (best["cool"] + best["white"]) > best["warm"]:
+            best["verdict"], best["conf"] = "success", 0.4
+
+    # log ไป Web UI
+    try:
+        col = "#42a5f5" if best["verdict"] == "success" else ("#ef5350" if best["verdict"] == "fail" else "#6c757d")
+        _log_web(getattr(adb, "dev_id", "?"),
+                 ('overlay: <b style="color:%s">%s</b> '
+                  '(conf=%.2f, warm=%.3f, cool=%.3f, white=%.3f, tmS=%.2f, tmF=%.2f, mot=%.3f, ocr="%s")'
+                  % (col, best["verdict"] or "None", best["conf"], best["warm"], best["cool"], best["white"], best["tm_s"], best["tm_f"], best["motion"], best["ocr"])),
+                 "INFO")
+    except Exception:
+        pass
+
+    if best["verdict"]:
+        LOG.i(f"[overlay fused] {best['verdict']} (conf={best['conf']:.2f}; warm={best['warm']:.3f}, cool={best['cool']:.3f}, white={best['white']:.3f}, tmS={best['tm_s']:.2f}, tmF={best['tm_f']:.2f})")
+    else:
+        LOG.i("[overlay fused] unclear")
+
+    return best["verdict"]
 
 # ===================== Device context & logging =====================
 def _ctx(dev_id: str) -> dict:
@@ -534,7 +514,7 @@ def _log_config_once(dev_id: str, *, slot_center, slot_status_roi, slot_roi_size
     LOG.i(f"[{dev_id}] CFG slot_roi_size=[{slot_roi_size[0]},{slot_roi_size[1]}]")
     LOG.i(f"[{dev_id}] CFG upgrade_btn={upgrade_btn}")
     LOG.i(f"[{dev_id}] CFG overlay_abs=(x1={overlay_abs[0]},y1={overlay_abs[1]},w={overlay_abs[2]},h={overlay_abs[3]})")
-    LOG.i(f"[{dev_id}] CFG insert_roi=(x1={insert_roi[0]},y1={insert_roi[1]},w={insert_roi[2]},h={insert_roi[3]})")
+    LOG.i(f"[{dev_id}] CFG insert_roi=(x1={insert_roi[0]},{insert_roi[1]},{insert_roi[2]},{insert_roi[3]})")
     LOG.i(f"[{dev_id}] CFG items(len)={len(items)} sample={items[:6]}")
     LOG.i(f"[{dev_id}] CFG swipe={swipe_cfg}")
     c["_cfg_dumped"] = True
@@ -546,6 +526,8 @@ def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
         x, y, dy, ms = swipe_cfg["x"], swipe_cfg["y"], swipe_cfg["dy"], swipe_cfg["ms"]
         LOG.i(f"[{dev_id}] SWIPE after {len(items)} items → ({x},{y})→({x},{y+dy}) ms={ms}")
         try:
+            adb.tap(970, 120)   # touch for close tooltip, safe
+            time.sleep(0.25)
             adb.swipe(x, y, dy=dy, ms=ms)
             time.sleep(0.25)
         except Exception as e:
@@ -554,51 +536,162 @@ def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
     c["successes"] = 0
     c["base_level"] = None
 
-_DATASET_BASE = _CFG.get("dataset_dir", os.getenv("DATASET_DIR", "/app/data/dataset/level"))
-_NORM_SIZE = (32, 28)  # ปรับได้ตามต้องการ
-
-def _norm_roi_size(img, size=_NORM_SIZE):
-    return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
-
-def _save_plus_dataset(roi_bgr: np.ndarray, *, level: Optional[int], method: str, debug_tag: str):
+# ===================== Level readers (icon & tooltip) =====================
+def _read_level_from_icon_topright(
+    adb: ADBAdapter,
+    item_center: Tuple[int,int],
+    box_size: int = 60,
+    debug_tag: str = "item",
+    force: bool = False
+) -> Optional[int]:
     """
-    level=None หรือ -1  -> เก็บที่ plus_unlabeled/
-    level in 1..6       -> เก็บที่ plus{n}/ (เมื่อ SAVE_DATASET_ALL=1)
+    อ่านระดับไอเทมจากมุมขวาบนของไอคอนในช่อง
+    ลำดับ:
+      PASS 0 : dataset classifier (centroid cosine)  **เพิ่มใหม่**
+      PASS A1: dataset bank บน yellow-mask
+      PASS A : yellow-mask + single template TM
+      PASS B1: dataset bank บน gray ROI
+      PASS B : RGB template
+      PASS C : OCR (+0123456789)
     """
-    try:
-        if level is None or level < 1 or level > 6:
-            sub = "plus_unlabeled"
-        else:
-            if os.getenv("SAVE_DATASET_ALL", "0") != "1":
-                return  # ไม่เก็บกรณีอ่านได้ เว้นสั่งไว้
-            sub = f"plus{level}"
+    cx, cy = item_center
+    img = _grab(adb)
+    crop, (x0, y0) = _crop_center(img, cx, cy, box_size, box_size)
 
-        outdir = os.path.join(_DATASET_BASE, sub)
-        os.makedirs(outdir, exist_ok=True)
+    # ROI: มุมขวาบนของไอคอน
+    h, w = crop.shape[:2]
+    rx0 = int(w * float(os.getenv("ICON_ROI_XRATIO", "0.55")))
+    ry0 = 0
+    rw  = w - rx0
+    rh  = int(h * float(os.getenv("ICON_ROI_HRATIO", "0.50")))
+    roi = crop[ry0:ry0+rh, rx0:rx0+rw].copy()
+    tag = f"{debug_tag}_roi"
 
-        ts = int(time.time() * 1000)
-        # บันทึกขนาดเดิม
-        p_ori = os.path.join(outdir, f"{debug_tag}_{ts}_{method}_ori.png")
-        cv2.imwrite(p_ori, roi_bgr)
+    # เตรียมโดเมนต่าง ๆ
+    ymask = _yellow_digit_mask(roi)          # mask (0/255)
+    ymask_norm = _norm_roi_size(ymask)       # normalize
+    roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    roi_gray_norm = _norm_roi_size(roi_gray)
 
-        # บันทึกเวอร์ชัน normalize (เทรน/ทำเทมเพลตได้ทันที)
-        roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
-        norm = _norm_roi_size(roi_gray)
-        p_norm = os.path.join(outdir, f"{debug_tag}_{ts}_{method}_norm.png")
-        cv2.imwrite(p_norm, norm)
+    if force:
+        _save_plus_dataset(roi, level=None, method="cls", debug_tag=tag) #force save
+        return None
+    # ---------- PASS 0: dataset classifier (centroid cosine) ----------
+    cls_thr = float(os.getenv("CONF_PLUS_CLS_THR", "0.88"))
+    lvl_c, sc_c = _predict_level_by_classifier(roi_gray_norm)
+    if lvl_c is not None and sc_c >= cls_thr:
+        LOG.i(f"[ICON-PLUS CLS] level=+{lvl_c} cos={sc_c:.3f} (thr={cls_thr})")
+        if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+            _save_item_lv_snap(crop, roi, roi_gray_norm, x0, y0, x0+rx0, y0+ry0, rw, rh, lvl_c, "cls", tag)
+        if 1 <= lvl_c <= 6:
+            _save_plus_dataset(roi, level=lvl_c, method="cls", debug_tag=tag)
+        return lvl_c
 
-        LOG.i(f"[dataset] saved → {p_ori} , {p_norm}")
-    except Exception as e:
-        LOG.w(f"[dataset] save fail: {e}")
+    # ---------- PASS A1: dataset bank on yellow-mask ----------
+    if _PLUS_TPL_BANK:
+        lvl_bm, sc_bm = _best_level_by_bank_on_mask(ymask_norm)
+        thr_bank = float(os.getenv("CONF_PLUS_BANK_THR", "0.80"))
+        if lvl_bm is not None and sc_bm >= thr_bank:
+            LOG.i(f"[ICON-PLUS BANK(mask)] level=+{lvl_bm} score={sc_bm:.3f} (thr={thr_bank})")
+            if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+                _save_item_lv_snap(crop, roi, ymask_norm, x0, y0, x0+rx0, y0+ry0, rw, rh, lvl_bm, "bank_mask", tag)
+            if 1 <= lvl_bm <= 6:
+                _save_plus_dataset(roi, level=lvl_bm, method="bank_mask", debug_tag=tag)
+            return lvl_bm
+
+    # ---------- PASS A: yellow-mask + single-template TM ----------
+    # best_lvl, best_sc = None, -1.0
+    # tm_mask_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.78"))
+    # for n in range(1, 10):
+    #     tpl = CV.read_tpl(f"plus{n}.png")
+    #     if tpl is None:
+    #         continue
+    #     if tpl.ndim == 3:
+    #         tpl = cv2.cvtColor(tpl, cv2.COLOR_BGR2GRAY)
+    #     _, tpl_bin = cv2.threshold(tpl, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    #     res = cv2.matchTemplate(ymask, tpl_bin, cv2.TM_CCOEFF_NORMED)
+    #     _, sc, _, _ = cv2.minMaxLoc(res)
+    #     if sc > best_sc:
+    #         best_sc = sc
+    #         best_lvl = n
+    # if best_lvl is not None and best_sc >= tm_mask_thr:
+    #     LOG.i(f"[ICON-PLUS MASK] level=+{best_lvl} score={best_sc:.3f} (thr={tm_mask_thr})")
+    #     if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+    #         _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "mask_tm", tag)
+    #     if 1 <= best_lvl <= 6:
+    #         _save_plus_dataset(roi, level=best_lvl, method="mask_tm", debug_tag=tag)
+    #     return best_lvl
+
+    # ---------- PASS B1: dataset bank on gray ROI ----------
+    if _PLUS_TPL_BANK:
+        lvl_bg, sc_bg = _best_level_by_bank_on_gray(roi_gray_norm)
+        thr_bank_rgb = float(os.getenv("CONF_PLUS_BANK_RGB_THR", "0.83"))
+        if lvl_bg is not None and sc_bg >= thr_bank_rgb:
+            LOG.i(f"[ICON-PLUS BANK(gray)] level=+{lvl_bg} score={sc_bg:.3f} (thr={thr_bank_rgb})")
+            if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+                _save_item_lv_snap(crop, roi, None, x0, y0, x0+rx0, y0+ry0, rw, rh, lvl_bg, "bank_gray", tag)
+            if 1 <= lvl_bg <= 6:
+                _save_plus_dataset(roi, level=lvl_bg, method="bank_gray", debug_tag=tag)
+            return lvl_bg
+
+    # ---------- PASS B: RGB template matching (สำรอง) ----------
+    # best_lvl, best_sc = None, -1.0
+    # tm_rgb_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.82"))
+    # for n in range(1, 10):
+    #     tpl = CV.read_tpl(f"plus{n}.png")
+    #     if tpl is None:
+    #         continue
+    #     pt, sc = CV.match_center_multiscale(
+    #         roi, tpl, thr=tm_rgb_thr, scales=(0.90, 0.95, 1.00, 1.05, 1.10)
+    #     )
+    #     if pt and sc > best_sc:
+    #         best_sc = sc
+    #         best_lvl = n
+    # if best_lvl is not None and best_sc >= tm_rgb_thr:
+    #     LOG.i(f"[ICON-PLUS TM] level=+{best_lvl} score={best_sc:.3f} (thr={tm_rgb_thr})")
+    #     if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+    #         _save_item_lv_snap(crop, roi, None, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "rgb_tm", tag)
+    #     if 1 <= best_lvl <= 6:
+    #         _save_plus_dataset(roi, level=best_lvl, method="rgb_tm", debug_tag=tag)
+    #     return best_lvl
+
+    # ---------- PASS C: OCR (+0123456789) ----------
+    if _HAVE_TESS:
+        g  = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        tophat = cv2.morphologyEx(g, cv2.MORPH_TOPHAT, np.ones((3,3), np.uint8), iterations=1)
+        thr = cv2.adaptiveThreshold(tophat, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                    cv2.THRESH_BINARY_INV, 31, 9)
+        cfg = "--psm 7 --oem 1 -c tessedit_char_whitelist=+0123456789"
+        raw = pytesseract.image_to_string(thr, lang="eng", config=cfg)
+        text = (raw or "").strip().replace("\n", " ")
+        m = _PLUS_RE.search(text)
+        if m:
+            try:
+                cand = int(m.group(1))
+                if 0 <= cand <= 15:
+                    LOG.i(f"[ICON-PLUS OCR] text='{text}' → level≈+{cand}")
+                    if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+                        _save_item_lv_snap(crop, roi, thr, x0, y0, x0+rx0, y0+ry0, rw, rh, cand, "ocr", tag)
+                    if 1 <= cand <= 6:
+                        _save_plus_dataset(roi, level=cand, method="ocr", debug_tag=tag)
+                    return cand
+            except Exception:
+                pass
+
+    LOG.i("[ICON-PLUS] ไม่พบระดับ (cls/bank/mask/rgb/OCR ไม่ผ่าน)")
+    if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+        _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, -1, "miss", tag)
+    _save_plus_dataset(roi, level=None, method="miss", debug_tag=tag)  # เก็บไว้ให้คุณ label เอง
+    return None
 
 # ===================== Main step =====================
 def worker_step(controller) -> Dict[str, Any]:
     """
     State machine (integrated with high-accuracy logic):
     - pick    : tap item
-    - inspect : read [n] from slot_status_roi BEFORE insert
-    - insert  : click 'insert' via CV (no extra item tap); fallback slot_center (commented)
-    - upgrade : tap upgrade button, detect overlay result (OCR->TM->Color); break behavior at level>=_BREAK_LEVEL_MIN
+    - inspect : read level (icon top-right preferred) AFTER insert (อ่าน next-level แล้ว -1)
+    - insert  : click 'insert' via CV
+    - upgrade : tap upgrade button, detect overlay result
     """
     dev_id = controller.id
     target = controller.target_level
@@ -633,74 +726,84 @@ def worker_step(controller) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
 
     LOG.i(f"[{dev_id}] stage={c['stage']} item_idx={c['item_idx']} target=+{target} base={c.get('base_level')} succ={c.get('successes',0)}")
+    _log_web(dev_id, f'stage=<b>{_html.escape(c["stage"])}</b> item_idx={c["item_idx"]} target={target}')
 
     # ---------- Stage: pick ----------
     if c["stage"] == "pick":
         if not items:
             LOG.w(f"[{dev_id}] ไม่พบ items ใน config")
+            _log_web(dev_id, 'ไม่พบ items ใน config', "WARN")
             time.sleep(0.1)
             return {}
 
         idx = c["item_idx"] % len(items)
         ix, iy = items[idx]
         LOG.i(f"[{dev_id}] แตะไอเทม idx={idx} @({ix},{iy})")
+        _log_web(dev_id, f'แตะไอเทม idx={idx} @({ix},{iy})')
         adb.tap(ix, iy)
-        c["stage"] = "inspect"
+        c["stage"] = "insert"
         c["last_action_ts"] = time.time()
         return {}
 
-    # ---------- Stage: inspect (read [n] before insert) ----------
+    # ---------- Stage: inspect (tap → insert → read level at fixed point) ----------
     if c["stage"] == "inspect":
         remain = 0.20 - (time.time() - c["last_action_ts"])
         if remain > 0:
             time.sleep(min(0.05, remain))
             return {}
 
-        # หา index และพิกัดของไอเทมปัจจุบัน
+        # ไอเทมปัจจุบัน
         idx = c["item_idx"] % len(items)
-        ix, iy = items[idx]
 
-        # 1) พยายามอ่านจากมุมขวาบนของไอคอนในช่อง (60x60)
+        # ให้ภาพนิ่งเล็กน้อย (ปรับได้ด้วย POST_INSERT_SETTLE, ดีฟอลต์ 0.35s)
+        time.sleep(float(os.getenv("POST_INSERT_SETTLE", "0.35")))
+
+        # อ่านระดับจาก "มุมขวาบนของช่อง" ที่พิกัดตายตัว (ค่าเริ่ม 960,323)
+        fx = int(os.getenv("ICON_FIX_CX", "960"))
+        fy = int(os.getenv("ICON_FIX_CY", "323"))
         lvl = _read_level_from_icon_topright(
             adb,
-            (ix, iy),
+            (fx, fy),
             box_size=int(os.getenv("ICON_BOX_SIZE", "68")),
             debug_tag=f"{dev_id}_idx{idx}"
         )
-
-        # 2) ถ้ายังไม่ได้ ลองอ่านจาก tooltip (กรอบคำอธิบาย) เป็น fallback
+        # next-level view → ต้อง -1; ถ้า None ให้เป็น 0
         if lvl is None:
-            lvl = _read_bracket_level_from_status(adb, slot_status_roi)
+            lvl = 0
+        else:
+            lvl = max(0, int(lvl) - 1)
 
         c["base_level"] = lvl if isinstance(lvl, int) else None
 
-        if lvl is None or (isinstance(lvl, int) and lvl < target):
-            LOG.i(f"[{dev_id}] ตัดสินใจ INSERT (level={lvl}, target={target})")
-            c["stage"] = "insert"
-            c["successes"] = 0
-            c["last_action_ts"] = time.time()
-        else:
-            LOG.i(f"[{dev_id}] ข้ามไอเทมนี้ (level={lvl} >= target={target})")
-            _next_item(dev_id, adb, items, swipe_cfg, c)
+        LOG.i(f"[{dev_id}] หลัง INSERT อ่านระดับ level={lvl}")
+        _log_web(dev_id, f'หลัง INSERT อ่านระดับ = {_lv_html(lvl, target)}')
+
+        # เข้าสู่สเตจ 'upgrade'
+        c["stage"] = "upgrade"
+        c["successes"] = 0
+        c["last_action_ts"] = time.time()
         return {}
 
-    # ---------- Stage: insert (CV insert then wait 0.5s) ----------
+    # ---------- Stage: insert (CV insert then wait 0.3s) ----------
     if c["stage"] == "insert":
         idx = c["item_idx"] % len(items)
         ix, iy = items[idx]
         LOG.i(f"[{dev_id}] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx={idx} @({ix},{iy})")
+        _log_web(dev_id, f'INSERT: เตรียมกด "ใส่ลง" idx={idx} @({ix},{iy})')
 
         LOG.i(f"[{dev_id}] INSERT: try CV insert in roi=({insert_roi[0]},{insert_roi[1]},{insert_roi[2]},{insert_roi[3]})")
         ok = _click_insert_via_cv(adb, insert_roi_rect=insert_roi, wait_pre=None)
         if not ok:
-            sx, sy = slot_center
+            sx, sy = _pt("slot_center", (0, 0))
             LOG.w(f"[{dev_id}] INSERT: CV not found → fallback slot_center @({sx},{sy})")
-            # adb.tap(sx, sy)   # ใช้เมื่อจำเป็นเท่านั้น
+            _log_web(dev_id, f'INSERT: CV not found → fallback slot_center @({sx},{sy})', "WARN")
+            # adb.tap(sx, sy)   # เผื่อจำเป็น
 
-        LOG.i(f"[{dev_id}] INSERT: done → รอ 0.5s")
-        time.sleep(0.5)
+        LOG.i(f"[{dev_id}] INSERT: done → รอ 0.3s")
+        _log_web(dev_id, 'INSERT: done → รอ 0.3s')
+        time.sleep(0.3)
 
-        c["stage"] = "upgrade"
+        c["stage"] = "inspect"
         c["last_action_ts"] = time.time()
         return {}
 
@@ -709,38 +812,56 @@ def worker_step(controller) -> Dict[str, Any]:
         base = c["base_level"] or 0
         cur = base + c["successes"]
         LOG.i(f"[{dev_id}] UPGRADE base={base} succ={c['successes']} cur={cur} / target=+{target}")
+        _log_web(dev_id, f'UPGRADE: curr={_lv_html(cur, target)} / target={target}')
 
         # Stop conditions
         if cur >= target:
             LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → นับชิ้นสำเร็จ 1 ชิ้น และไปชิ้นถัดไป")
-            _next_item(dev_id, adb, items, swipe_cfg, c)
-            return {"done_item": True}
+            _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(cur, target)} / target={target} ✅')
+            # อ่านระดับจาก "มุมขวาบนของช่อง" ที่พิกัดตายตัว (ค่าเริ่ม 960,323)
+            fx = int(os.getenv("ICON_FIX_CX", "960"))
+            fy = int(os.getenv("ICON_FIX_CY", "323"))
+            idx = c["item_idx"] % len(items)
+            lvl = _read_level_from_icon_topright(
+                adb,
+                (fx, fy),
+                box_size=int(os.getenv("ICON_BOX_SIZE", "68")),
+                debug_tag=f"skip_{dev_id}_{idx}"
+            )
+            if lvl is None:
+                _next_item(dev_id, adb, items, swipe_cfg, c)
+                return {"done_item": True}
+            else:
+                lvl = max(0, int(lvl) - 1)
 
         # Pre-check: slot still there?
-        if _is_slot_empty(adb, slot_center, slot_roi_size):
+        if _is_slot_empty(adb, _pt("slot_center", (0, 0)), _size2("slot_roi", (80, 80))):
             LOG.i(f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
+            _log_web(dev_id, 'ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้', "WARN")
             _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"break_at_level": cur}
 
-        ux, uy = upgrade_btn
+        ux, uy = _pt("upgrade_btn", (0, 0))
         LOG.i(f"[{dev_id}] UPGRADE: click upgrade_btn @({ux},{uy})")
+        _log_web(dev_id, f'UPGRADE: click upgrade_btn @({ux},{uy})')
         adb.tap(ux, uy)
         out["upgrade_clicks"] = out.get("upgrade_clicks", 0) + 1
         time.sleep(_POST_UPGRADE_WAIT)
 
         # Detect overlay
+        overlay_abs = _rect("overlay_abs", (0, 0, 0, 0))
         verdict = _overlay_detect(adb, overlay_abs)
         if verdict == "success":
             c["successes"] += 1
+            new_cur = base + c["successes"]
             out["success_clicks"] = out.get("success_clicks", 0) + 1
             LOG.i(f"[{dev_id}] ผล: สำเร็จ (+1) → success={c['successes']}")
+            _log_web(dev_id, f'ผล: <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
             return out
 
-        # fail ทันที
         if verdict == "fail":
-            # เดิม: มีเงื่อนไข break เมื่อ cur >= _BREAK_LEVEL_MIN (ค่าเริ่มต้น 4)
-            # แก้: ไม่ break — ให้พยายามต่อจนถึง target
             LOG.i(f"[{dev_id}] ผล: ล้มเหลว → พยายามต่อจนถึง target={target}")
+            _log_web(dev_id, f'ผล: <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(cur, target)} / target={target}', "WARN")
             return out
 
         # Not clear → poll within 1.5s
@@ -754,24 +875,38 @@ def worker_step(controller) -> Dict[str, Any]:
                 break
         if got == "success":
             c["successes"] += 1
+            new_cur = base + c["successes"]
             out["success_clicks"] = out.get("success_clicks", 0) + 1
             LOG.i(f"[{dev_id}] (ดีเลย์) สำเร็จ → success={c['successes']}")
+            _log_web(dev_id, f'(ดีเลย์) <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
             return out
         elif got == "fail":
             LOG.i(f"[{dev_id}] (ดีเลย์) ล้มเหลว → พยายามต่อจนถึง target={target}")
+            _log_web(dev_id, f'(ดีเลย์) <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(cur, target)} / target={target}', "WARN")
             return out
 
         LOG.i(f"[{dev_id}] overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป")
+        _log_web(dev_id, 'overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป', "WARN")
+        
         return out
 
     # ---------- Fallback ----------
     LOG.w(f"[{dev_id}] พบ stage ไม่รู้จัก: {c['stage']} → รีเซ็ตเป็น pick")
+    _log_web(dev_id, f'พบ stage ไม่รู้จัก: {_html.escape(str(c["stage"]))} → รีเซ็ตเป็น pick', "WARN")
     c["stage"] = "pick"
     return {}
 
-# ===================== Loop wrapper (unchanged) =====================
+# ===================== Loop wrapper =====================
 def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
     LOG.i(f"[{ctrl.id}] loop start")
+
+    # โหลด template bank และ classifier จาก dataset หนึ่งครั้งก่อนเข้าลูป
+    global _PLUS_TPL_BANK, _PLUS_CLS_CENTROIDS
+    if not _PLUS_TPL_BANK:
+        _PLUS_TPL_BANK = _load_plus_template_bank()
+    if not _PLUS_CLS_CENTROIDS:
+        _PLUS_CLS_CENTROIDS = _build_plus_classifier()
+
     try:
         t0_item = time.time()
         while not ctrl.stop_event.is_set():
@@ -785,13 +920,14 @@ def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
                 ctrl.last_error = str(e)
                 ctrl.state = "error"
                 LOG.e(f"[{ctrl.id}] step error: {e}")
+                _log_web(ctrl.id, f'step error: {_html.escape(str(e))}', "ERROR")
                 break
 
             # per-item timeout guard (optional)
-            if time.time() - t0_item > _MAX_ITEM_TIME_SEC:
+            if _MAX_ITEM_TIME_SEC > 0 and (time.time() - t0_item) > _MAX_ITEM_TIME_SEC:
                 LOG.i(f"[{ctrl.id}] item timeout {_MAX_ITEM_TIME_SEC}s → advance item")
+                _log_web(ctrl.id, f'item timeout {_MAX_ITEM_TIME_SEC}s → advance item', "WARN")
                 c = _ctx(ctrl.id)
-                # ใช้เส้นทางรวมศูนย์ เพื่อคงลอจิก swipe ทุก 6 ชิ้น
                 items = _items()
                 swipe_cfg = _swipe()
                 adb = getattr(ctrl, "adb", None)
@@ -804,7 +940,9 @@ def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
             # heartbeat
             if int(ctrl.last_tick) % 3 == 0:
                 LOG.i(f"[{ctrl.id}] heartbeat items={getattr(ctrl,'items_upgraded_done',0)} target=+{getattr(ctrl,'target_level',0)}")
+                _log_web(ctrl.id, f'heartbeat items={getattr(ctrl,"items_upgraded_done",0)} target={getattr(ctrl,"target_level",0)}')
 
             time.sleep(sleep_sec)
     finally:
         LOG.i(f"[{ctrl.id}] loop exit (state={ctrl.state})")
+        _log_web(ctrl.id, f'loop exit (state={_html.escape(str(ctrl.state))})')

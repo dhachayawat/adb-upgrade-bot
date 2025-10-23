@@ -11,6 +11,18 @@
       "name": "ดาบ121",
       "device": "host.docker.internal:5595",
       "target_level": 5
+    },
+    {
+      "id": "d3",
+      "name": "ดาบ108",
+      "device": "host.docker.internal:5605",
+      "target_level": 5
+    },
+    {
+      "id": "d4",
+      "name": "ซอยจุ๊",
+      "device": "host.docker.internal:5575",
+      "target_level": 5
     }
   ]
 }

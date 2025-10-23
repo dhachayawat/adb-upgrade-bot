@@ -47,21 +47,13 @@
             <div class="small text-muted">Target</div>
 
             <div class="d-flex flex-column gap-2">
-                <!-- แถวบน: input + Apply -->
-                <div class="d-flex align-items-center gap-2">
-                <input type="number" min="1" max="10"
-                        class="form-control form-control-sm w-50"
-                        id="tl" value="5">
-                <button class="btn btn-sm btn-outline-primary"
-                        onclick="setTarget(false)">Apply</button>
-                </div>
-
-                <!-- แถวล่าง: Apply+Save -->
-                <div>
-                <button class="btn btn-sm btn-primary w-100"
-                        onclick="setTarget(true)"
-                        title="Apply & Save to config">Apply+Save</button>
-                </div>
+              <div class="d-flex align-items-center gap-2">
+                <input type="number" min="1" max="10" class="form-control form-control-sm w-50" id="tl" value="5">
+                <button class="btn btn-sm btn-outline-primary" onclick="setTarget(false)">Apply</button>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-primary w-100" onclick="setTarget(true)" title="Apply & Save to config">Apply+Save</button>
+              </div>
             </div>
           </div>
         </div>
@@ -108,57 +100,175 @@
 </div>
 
 <div class="row g-3">
-    <div class="col-12">
-        <div class="card shadow-sm mt-3">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Device Logs</h5>
-                <div class="d-flex gap-2">
-                    <select id="logLines" class="form-select form-select-sm" style="width:auto;">
-                    <option value="200">200 lines</option>
-                    <option value="400" selected>400 lines</option>
-                    <option value="800">800 lines</option>
-                    </select>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="loadLogs()">Refresh</button>
-                    <div class="form-check ms-2">
-                    <input class="form-check-input" type="checkbox" id="autoLogs" checked>
-                    <label class="form-check-label small" for="autoLogs">Auto (5s)</label>
-                    </div>
-                </div>
-                </div>
-                <pre id="dev-logs" class="bg-light border rounded p-2 mt-2" style="min-height:180px; max-height:360px; overflow:auto;"></pre>
+  <div class="col-12">
+    <div class="card shadow-sm mt-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">Device Logs</h5>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div class="btn-group btn-group-sm" role="group" aria-label="log mode">
+              <input type="radio" class="btn-check" name="logmode" id="mode-plain" autocomplete="off" checked>
+              <label class="btn btn-outline-secondary" for="mode-plain">Plain</label>
+              <input type="radio" class="btn-check" name="logmode" id="mode-rich" autocomplete="off">
+              <label class="btn btn-outline-secondary" for="mode-rich">Rich (HTML)</label>
             </div>
+            <select id="logLines" class="form-select form-select-sm" style="width:auto;">
+              <option value="200">200 lines</option>
+              <option value="400" selected>400 lines</option>
+              <option value="800">800 lines</option>
+            </select>
+            <button class="btn btn-outline-secondary btn-sm" onclick="reloadLogs()">Refresh</button>
+            <div class="form-check ms-2">
+              <input class="form-check-input" type="checkbox" id="autoLogs" checked>
+              <label class="form-check-label small" for="autoLogs">Auto (5s)</label>
+            </div>
+          </div>
         </div>
+
+        <!-- Plain logs -->
+        <pre id="dev-logs" class="bg-light border rounded p-2 mt-2"
+             style="min-height:180px; max-height:360px; overflow:auto; white-space:pre-wrap;"></pre>
+
+        <!-- Rich logs -->
+        <div id="dev-logs-rich" class="bg-light border rounded p-2 mt-2 d-none"
+             style="min-height:180px; max-height:360px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
+          <div class="text-muted small">Loading…</div>
+        </div>
+      </div>
     </div>
+  </div>
 </div>
+
+<style>
+  /* สีพื้นตามระดับ log */
+  .log-item       { padding: 2px 6px; border-radius: 4px; margin-bottom: 2px; }
+  .log-info       { background: rgba(0,0,0,.02); }
+  .log-warn       { background: rgba(255,165,0,.10); }
+  .log-error      { background: rgba(229,57,53,.10); }
+  .log-ts         { color:#6c757d; margin-right:.5rem; }
+  .log-dev        { color:#6c757d; margin-right:.5rem; }
+  /* ตัวเลขระดับ (+n) ที่ worker ส่งมาพร้อม class="adb-lv" */
+  .adb-lv { font-weight:600; }
+</style>
 
 <script>
 let _logsTimer = null;
 const DEV_ID = "{{ device_id }}";
 
-async function loadLogs(){
-  const lines = parseInt(document.getElementById('logLines').value, 10) || 400;
+function el(id){ return document.getElementById(id); }
+
+async function loadPlainLogs(){
+  const lines = parseInt(el('logLines').value, 10) || 400;
   const r = await fetch(`/api/devices/${encodeURIComponent(DEV_ID)}/logs?lines=${lines}`);
   let j={}; try{ j = await r.json(); }catch(e){ j = { text: await r.text() }; }
-  document.getElementById('dev-logs').textContent = j.text || '';
+  el('dev-logs').textContent = j.text || '';
+}
+
+function sanitizeHtml(html){
+  // whitelist: <span>, <b>; style: color, font-weight; class: เฉพาะ "adb-lv"
+  const allowedTags = new Set(['SPAN','B']);
+  const allowedStyles = new Set(['color','font-weight']);
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html || '';
+
+  (function walk(node){
+    for(const child of Array.from(node.children)){
+      if(!allowedTags.has(child.tagName)){
+        child.replaceWith(document.createTextNode(child.textContent));
+        continue;
+      }
+      // clean attributes
+      for(const attr of Array.from(child.attributes)){
+        const name = attr.name.toLowerCase();
+        if(name === 'style'){
+          const parts = attr.value.split(';').map(s=>s.trim()).filter(Boolean);
+          const keep = [];
+          for(const p of parts){
+            const kv = p.split(':');
+            if(kv.length !== 2) continue;
+            const k = kv[0].trim().toLowerCase();
+            const v = kv[1].trim();
+            if(allowedStyles.has(k)) keep.push(`${k}:${v}`);
+          }
+          if(keep.length) child.setAttribute('style', keep.join(';')); else child.removeAttribute('style');
+        }else if(name === 'class'){
+          const ok = attr.value.split(/\s+/).filter(c => c === 'adb-lv').join(' ');
+          if(ok) child.setAttribute('class', ok); else child.removeAttribute('class');
+        }else{
+          child.removeAttribute(attr.name);
+        }
+      }
+      walk(child);
+    }
+  })(tpl.content);
+  return tpl.innerHTML;
+}
+
+function renderRichLogs(list){
+  const box = el('dev-logs-rich');
+  if(!Array.isArray(list) || list.length === 0){
+    box.innerHTML = '<div class="text-muted small">No logs</div>';
+    return;
+  }
+  const rows = list.map(rec => {
+    const ts = new Date(rec.ts * 1000).toLocaleTimeString();
+    const lvl = (rec.lvl || 'INFO').toLowerCase();
+    const html = sanitizeHtml(rec.html || '');
+    return `
+      <div class="log-item log-${lvl}">
+        <span class="log-ts">${ts}</span>
+        <span class="log-dev">${rec.dev || ''}</span>
+        <span class="log-msg">${html}</span>
+      </div>`;
+  }).join('');
+  box.innerHTML = rows;
+}
+
+async function loadRichLogs(){
+  const lines = parseInt(el('logLines').value, 10) || 400;
+  try{
+    const r = await fetch(`/api/devices/${encodeURIComponent(DEV_ID)}/weblogs?lines=${lines}`);
+    if(!r.ok){
+      el('dev-logs-rich').innerHTML = '<div class="text-muted small">Rich logs endpoint not available.</div>';
+      return;
+    }
+    const data = await r.json(); // expected: [{ts,dev,html,lvl}, ...]
+    renderRichLogs(data);
+  }catch(e){
+    el('dev-logs-rich').innerHTML = '<div class="text-danger small">Error loading rich logs</div>';
+  }
+}
+
+function setLogMode(){
+  const plain = el('mode-plain').checked;
+  el('dev-logs').classList.toggle('d-none', !plain);
+  el('dev-logs-rich').classList.toggle('d-none', plain);
+  // refresh once on switch
+  if(plain) loadPlainLogs(); else loadRichLogs();
+}
+
+function reloadLogs(){
+  if(el('mode-plain').checked) loadPlainLogs(); else loadRichLogs();
 }
 
 function startLogsAuto(){
   if(_logsTimer) clearInterval(_logsTimer);
   _logsTimer = setInterval(()=> {
-    const auto = document.getElementById('autoLogs')?.checked;
-    if(auto) loadLogs();
+    if(el('autoLogs')?.checked) reloadLogs();
   }, 5000);
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  loadLogs();
+  // init
+  setLogMode();
   startLogsAuto();
-  document.getElementById('autoLogs').addEventListener('change', ()=>{
-    if(document.getElementById('autoLogs').checked) loadLogs();
-  });
-  document.getElementById('logLines').addEventListener('change', loadLogs);
+
+  el('autoLogs').addEventListener('change', ()=>{ if(el('autoLogs').checked) reloadLogs(); });
+  el('logLines').addEventListener('change', reloadLogs);
+  el('mode-plain').addEventListener('change', setLogMode);
+  el('mode-rich').addEventListener('change', setLogMode);
 });
+
 window.addEventListener('beforeunload', ()=>{ if(_logsTimer) clearInterval(_logsTimer); });
 
 async function api(path, opt){
@@ -177,36 +287,36 @@ function histHtml(h){
 }
 async function load(){
   const d = await api(`/api/devices/${encodeURIComponent(DEV_ID)}/status`);
-  document.getElementById('dev-name').innerText = d.name || '';
-  document.getElementById('dev-addr').innerText = d.device || '';
-  document.getElementById('badge-state').innerHTML = stateBadge(d.state);
+  el('dev-name').innerText = d.name || '';
+  el('dev-addr').innerText = d.device || '';
+  el('badge-state').innerHTML = stateBadge(d.state);
   const up = (typeof d.uptime_min === 'number') ? d.uptime_min.toFixed(2) : (d.uptime_min || 0);
-  document.getElementById('uptime').innerText = up;
-  document.getElementById('items-done').innerText = d.items_upgraded_done ?? 0;
-  document.getElementById('tl').value = d.target_level ?? 5;
-  document.getElementById('hist').innerHTML = histHtml(d.break_histogram);
-  document.getElementById('succ').innerText = d.successes ?? 0;
-  document.getElementById('fnb').innerText = d.fail_nonbreak ?? 0;
-  document.getElementById('uc').innerText = d.upgrade_clicks ?? 0;
+  el('uptime').innerText = up;
+  el('items-done').innerText = d.items_upgraded_done ?? 0;
+  el('tl').value = d.target_level ?? 5;
+  el('hist').innerHTML = histHtml(d.break_histogram);
+  el('succ').innerText = d.successes ?? 0;
+  el('fnb').innerText = d.fail_nonbreak ?? 0;
+  el('uc').innerText = d.upgrade_clicks ?? 0;
 
   // toggle buttons
-  document.getElementById('btn-start').style.display  = (d.state==='idle' || d.state==='error') ? 'inline-block' : 'none';
-  document.getElementById('btn-pause').style.display  = (d.state==='running') ? 'inline-block' : 'none';
-  document.getElementById('btn-resume').style.display = (d.state==='paused')  ? 'inline-block' : 'none';
-  document.getElementById('btn-stop').style.display   = (d.state==='running' || d.state==='paused') ? 'inline-block' : 'none';
+  el('btn-start').style.display  = (d.state==='idle' || d.state==='error') ? 'inline-block' : 'none';
+  el('btn-pause').style.display  = (d.state==='running') ? 'inline-block' : 'none';
+  el('btn-resume').style.display = (d.state==='paused')  ? 'inline-block' : 'none';
+  el('btn-stop').style.display   = (d.state==='running' || d.state==='paused') ? 'inline-block' : 'none';
 }
 async function act(cmd){
   await api(`/api/devices/${encodeURIComponent(DEV_ID)}/${cmd}`, { method:'POST' });
   refresh();
 }
 async function setTarget(persist){
-  const v = parseInt(document.getElementById('tl').value, 10);
+  const v = parseInt(el('tl').value, 10);
   if (isNaN(v)) return;
   await api(`/api/devices/${encodeURIComponent(DEV_ID)}/target-level`, { method:'PUT', body: JSON.stringify({ target_level: v, persist: !!persist }) });
   refresh();
 }
 async function snap(){
-  const img = document.getElementById('shot');
+  const img = el('shot');
   img.src = `/api/devices/${encodeURIComponent(DEV_ID)}/shot?ts=` + Date.now();
 }
 async function refresh(){ await load(); }
@@ -218,7 +328,6 @@ async function delDevice(){
   let j = {};
   try { j = await r.json(); } catch(e) {}
   if(j.error){ alert(j.error); return; }
-  // ลบสำเร็จ → กลับไปหน้า Manage
   location.href = '/manage-devices';
 }
 </script>
