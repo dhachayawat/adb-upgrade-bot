@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Dict, Any, Optional, Tuple
 import os
-import time
+import re, time
 import cv2
 import numpy as np
 
@@ -16,6 +16,8 @@ from . import cv_utils as CV
 _CFG = ConfigStore().load_defaults()
 _SUMMARY: Optional[SummaryStore] = None
 _DEVICE_CTX: Dict[str, dict] = {}  # per-device state
+_BRACKET_NUM_RE = re.compile(r"[［\[\(（]\s*(\d{1,2})\s*[］\]\)）]")
+_PLUS_RE = re.compile(r"\+?\s*(\d{1,2})")
 
 # -------------------- Quick getters --------------------
 def _summary() -> SummaryStore:
@@ -125,36 +127,283 @@ def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, 
     adb.tap(gx, gy)
     return True
 
-# ======== Pre-insert: read [n] from slot_status_roi ========
-import re
-_BRACKET_NUM_RE = re.compile(r"\[\s*(\d{1,2})\s*\]")
+def _save_item_lv_snap(crop, roi, thr, x0, y0, x1, y1, w, h, level, method, debug_tag: str):
+    try:
+        dbgdir = _CFG.get("debug_dir", "/app/cache/debug")
+        outdir = os.path.join(dbgdir, "item_lv")
+        os.makedirs(outdir, exist_ok=True)
+        ts = int(time.time() * 1000)
+
+        # 1) crop ทั้งกรอบ 60x60
+        cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_crop_{method}_lv{level}.png"), crop)
+
+        # 2) roi (มุมขวาบนของ crop)
+        cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_roi_{method}_lv{level}.png"), roi)
+
+        # 3) threshold สำหรับ OCR
+        if thr is not None:
+            cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_thr_{method}_lv{level}.png"), thr)
+
+        # 4) กล่อง overlay ให้เห็นตำแหน่งที่ใช้บน crop
+        vis = crop.copy()
+        # วาดกรอบของ ROI ภายใน crop
+        cv2.rectangle(vis, (x1 - x0, y1 - y0), (x1 - x0 + w, y1 - y0 + h), (0, 255, 0), 2)
+        cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_box_{method}_lv{level}.png"), vis)
+    except Exception as e:
+        LOG.w(f"[item_lv_snap] save fail: {e}")
+
+_PLUS_RE = re.compile(r"\+?\s*(\d{1,2})")
+
+def _read_level_from_icon_topright(
+    adb: ADBAdapter,
+    item_center: Tuple[int,int],
+    box_size: int = 60,
+    debug_tag: str = "item"
+) -> Optional[int]:
+    """
+    อ่านระดับไอเทมจากมุมขวาบนของไอคอนในช่อง
+    ขั้นตอน:
+      PASS A: yellow-mask + template matching (แม่น/เร็ว)
+      PASS B: RGB template matching (สำรอง)
+      PASS C: OCR เฉพาะ +0123456789 (สำรองสุดท้าย)
+    จะบันทึกสแน็ปไว้ที่ {debug_dir}/item_lv/ และ (ถ้าตั้งค่า) เก็บ ROI ลง dataset:
+      - MISS  -> {DATASET_DIR}/plus_unlabeled/
+      - HIT 1..6 (เมื่อ SAVE_DATASET_ALL=1) -> {DATASET_DIR}/plus{n}/
+    ต้องมี helper/ทรัพยากร: _yellow_digit_mask, _save_item_lv_snap, _save_plus_dataset, CV.read_tpl(), _grab, _crop_center
+    """
+    cx, cy = item_center
+    img = _grab(adb)
+    crop, (x0, y0) = _crop_center(img, cx, cy, box_size, box_size)
+
+    # ROI: มุมขวาบนของไอคอน
+    h, w = crop.shape[:2]
+    rx0 = int(w * float(os.getenv("ICON_ROI_XRATIO", "0.55")))   # เริ่ม 55% ของความกว้าง
+    ry0 = 0
+    rw  = w - rx0
+    rh  = int(h * float(os.getenv("ICON_ROI_HRATIO", "0.50")))   # สูง 50% บนสุด
+    roi = crop[ry0:ry0+rh, rx0:rx0+rw].copy()
+    tag = f"{debug_tag}_roi"
+
+    # ---------- PASS A: Template matching บน "มาสก์สีเหลือง" ----------
+    ymask = _yellow_digit_mask(roi)  # -> uint8 0/255
+    best_lvl, best_sc = None, -1.0
+    tm_mask_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.78"))  # เกณฑ์บนมาสก์
+
+    for n in range(1, 10):
+        tpl = CV.read_tpl(f"plus{n}.png")
+        if tpl is None:
+            continue
+        # แปลง template เป็นไบนารีเพื่อใช้ match กับมาสก์
+        if tpl.ndim == 3:
+            tpl = cv2.cvtColor(tpl, cv2.COLOR_BGR2GRAY)
+        _, tpl_bin = cv2.threshold(tpl, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        res = cv2.matchTemplate(ymask, tpl_bin, cv2.TM_CCOEFF_NORMED)
+        _, sc, _, _ = cv2.minMaxLoc(res)
+        if sc > best_sc:
+            best_sc = sc
+            best_lvl = n
+
+    if best_lvl is not None and best_sc >= tm_mask_thr:
+        LOG.i(f"[ICON-PLUS MASK] level=+{best_lvl} score={best_sc:.3f} (thr={tm_mask_thr})")
+        if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+            _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "mask_tm", tag)
+        if 1 <= best_lvl <= 6:
+            _save_plus_dataset(roi, level=best_lvl, method="mask_tm", debug_tag=tag)
+        return best_lvl
+
+    # ---------- PASS B: Template matching (RGB ปกติ) ----------
+    best_lvl, best_sc = None, -1.0
+    tm_rgb_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.82"))
+    for n in range(1, 10):
+        tpl = CV.read_tpl(f"plus{n}.png")
+        if tpl is None:
+            continue
+        pt, sc = CV.match_center_multiscale(
+            roi, tpl, thr=tm_rgb_thr, scales=(0.90, 0.95, 1.00, 1.05, 1.10)
+        )
+        if pt and sc > best_sc:
+            best_sc = sc
+            best_lvl = n
+
+    if best_lvl is not None and best_sc >= tm_rgb_thr:
+        LOG.i(f"[ICON-PLUS TM] level=+{best_lvl} score={best_sc:.3f} (thr={tm_rgb_thr})")
+        if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+            _save_item_lv_snap(crop, roi, None, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "rgb_tm", tag)
+        if 1 <= best_lvl <= 6:
+            _save_plus_dataset(roi, level=best_lvl, method="rgb_tm", debug_tag=tag)
+        return best_lvl
+
+    # ---------- PASS C: OCR (+0123456789) ----------
+    if _HAVE_TESS:
+        g  = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        # top-hat เน้นส่วนสว่างเล็ก ๆ (ตัวเลข) ก่อน threshold
+        tophat = cv2.morphologyEx(g, cv2.MORPH_TOPHAT, np.ones((3,3), np.uint8), iterations=1)
+        thr = cv2.adaptiveThreshold(tophat, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                    cv2.THRESH_BINARY_INV, 31, 9)
+        cfg = "--psm 7 --oem 1 -c tessedit_char_whitelist=+0123456789"
+        raw = pytesseract.image_to_string(thr, lang="eng", config=cfg)
+        text = (raw or "").strip().replace("\n", " ")
+        m = _PLUS_RE.search(text)
+        if m:
+            try:
+                cand = int(m.group(1))
+                if 0 <= cand <= 15:
+                    LOG.i(f"[ICON-PLUS OCR] text='{text}' → level≈+{cand}")
+                    if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+                        _save_item_lv_snap(crop, roi, thr, x0, y0, x0+rx0, y0+ry0, rw, rh, cand, "ocr", tag)
+                    if 1 <= cand <= 6:
+                        _save_plus_dataset(roi, level=cand, method="ocr", debug_tag=tag)
+                    return cand
+            except Exception:
+                pass
+
+    LOG.i("[ICON-PLUS] ไม่พบระดับ (mask/rgb/OCR ไม่ผ่าน)")
+    if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
+        _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, -1, "miss", tag)
+    _save_plus_dataset(roi, level=None, method="miss", debug_tag=tag)  # เก็บไว้ให้คุณ label เอง
+    return None
+
+
+
+def _find_tooltip_box(roi_bgr: np.ndarray) -> Optional[Tuple[int,int,int,int]]:
+    """
+    หา tooltip box ภายใน ROI:
+    1) ทำ HSV แล้วหาโซนมืด (พื้นดำโปร่ง ๆ) ด้วย threshold
+    2) ปรับนอยซ์ (morph close/open)
+    3) เลือกคอมโพเนนต์ที่ใหญ่สุดที่มีอัตราส่วน/ขนาดสมเหตุผล
+    คืนค่าเป็น (x, y, w, h) ในพิกัดของ ROI หรือ None ถ้าไม่พบ
+    """
+    hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+    # ค่าพื้น ๆ สำหรับพื้นดำโปร่ง: V ต่ำ, S ไม่จำเป็นต้องต่ำมาก
+    v_max = int(os.getenv("TOOLTIP_V_MAX", "80"))
+    s_max = int(os.getenv("TOOLTIP_S_MAX", "255"))
+    mask_dark = cv2.inRange(hsv, (0, 0, 0), (180, s_max, v_max))
+
+    # ปรับนอยซ์ให้เป็นก้อนสี่เหลี่ยม
+    k = int(os.getenv("TOOLTIP_KERNEL", "5"))
+    kernel = np.ones((k, k), np.uint8)
+    mask = cv2.morphologyEx(mask_dark, cv2.MORPH_CLOSE, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel, iterations=1)
+
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+
+    h, w = roi_bgr.shape[:2]
+    area_img = w * h
+    best = None
+    best_score = -1.0
+
+    for c in cnts:
+        x, y, ww, hh = cv2.boundingRect(c)
+        area = ww * hh
+        if area < area_img * 0.02:   # กรองชิ้นเล็ก ๆ <2% ของ ROI
+            continue
+        # tooltip มักจะผอมยาวแนวนอน
+        ar = ww / max(1.0, float(hh))
+        if ar < 2.2:                 # ถ้าสั้นเกินไปไม่น่าใช่ tooltip
+            continue
+        # ขอบกล่องควรอยู่ใน ROI ไม่ติดขอบเกินไป
+        pad_ok = (x > 1 and y > 1 and (x+ww) < (w-1) and (y+hh) < (h-1))
+        if not pad_ok:
+            continue
+
+        # ให้คะแนนตามพื้นที่และอัตราส่วน (อยากได้ก้อนยาวและใหญ่)
+        score = area * (0.6 + 0.4 * min(ar/6.0, 1.0))
+        if score > best_score:
+            best_score = score
+            best = (x, y, ww, hh)
+
+    return best
 
 def _read_bracket_level_from_status(adb: ADBAdapter,
                                     slot_status_roi_rect: Tuple[int, int, int, int],
                                     debug_tag: Optional[str] = "preinsert") -> Optional[int]:
     img = _grab(adb)
     roi, (ox, oy) = _crop_rect(img, slot_status_roi_rect)
-    thr = _binarize(roi)
-    text = _ocr_text(thr, psm=7)
 
-    lvl = None
-    m = _BRACKET_NUM_RE.search(text)
+    # 1) หา tooltip box ทั้งโซน (ใช้ที่เราคุยกันรอบก่อน)
+    tip_rect = _find_tooltip_box(roi) if '_find_tooltip_box' in globals() else None
+    if tip_rect:
+        tx, ty, tw, th = tip_rect
+        focus = roi[ty:ty+th, tx:tx+tw].copy()
+        src = "tooltip"
+    else:
+        focus = roi
+        tx, ty, tw, th = 0, 0, roi.shape[1], roi.shape[0]
+        src = "roi-fallback"
+
+    # 2) เตรียมภาพให้ชัดสำหรับฟอนต์ไทยบนพื้นมืด
+    g  = cv2.cvtColor(focus, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    g  = clahe.apply(g)
+    thr = cv2.adaptiveThreshold(g, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                cv2.THRESH_BINARY_INV, 31, 9)
+    thr = cv2.morphologyEx(thr, cv2.MORPH_OPEN, np.ones((2,2), np.uint8), iterations=1)
+
+    if not _HAVE_TESS:
+        return None
+
+    # -------- Pass A: OCR ไทย+อังกฤษ (ไม่ whitelist) แล้ว regex หาวงเล็บ+ตัวเลข --------
+    cfg_a = "--psm 7 --oem 1"
+    raw_a = pytesseract.image_to_string(thr, lang="tha+eng", config=cfg_a)
+    text_a = (raw_a or "").strip().replace("\n", " ")
+    m = _BRACKET_NUM_RE.search(text_a)
     if m:
         try:
             lvl = int(m.group(1))
+            LOG.i(f"[OCR-THA/ENG] src={src} text='{text_a}' → level={lvl}")
+            _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag)
+            return lvl
         except Exception:
-            lvl = None
+            pass  # ลองเฟสถัดไป
 
-    LOG.i(f"[OCR ก่อนใส่ลง] text='{text}' → ระดับในวงเล็บ = {lvl} (roi {ox},{oy},{roi.shape[1]}x{roi.shape[0]})")
-
-    if os.getenv("SAVE_SCREENCAP", "1") != "0":
+    # -------- Pass B: หาเลขกลุ่มขวาสุด (กรณีไม่มีวงเล็บถูกอ่าน) --------
+    # โฟกัสเฉพาะ 35% ขวาสุด
+    h, w = thr.shape[:2]
+    rx = int(w * 0.65)
+    right_thr = thr[:, rx:].copy()
+    cfg_b = "--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789"
+    raw_b = pytesseract.image_to_string(right_thr, lang="eng", config=cfg_b)
+    text_b = (raw_b or "").strip().replace("\n", " ")
+    # เอากลุ่มตัวเลขท้ายสุด 1–2 หลัก
+    m2 = re.search(r"(\d{1,2})\s*$", text_b)
+    if m2:
         try:
-            os.makedirs(_CFG.get("debug_dir", "/app/cache/debug"), exist_ok=True)
-            cv2.imwrite(os.path.join(_CFG.get("debug_dir", "/app/cache/debug")), roi)
-            cv2.imwrite(os.path.join(_CFG.get("debug_dir", "/app/cache/debug")), thr)
+            cand = int(m2.group(1))
+            # เงื่อนไขป้องกันพลาด: ต้องมีตัวอักษร/ช่องว่างก่อนหน้าใน focus (เหมือนชื่อไอเทม)
+            # และค่าควรอยู่ในช่วง 0–15 (สมมติระดับสูงสุดไม่เกินนี้)
+            if 0 <= cand <= 15:
+                LOG.i(f"[OCR-rightmost-digits] src={src} text='{text_b}' → level≈{cand} (no brackets)")
+                _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag)
+                return cand
         except Exception:
             pass
-    return lvl
+
+    LOG.i(f"[OCR] ไม่พบระดับ → ถือว่าไม่มีระดับ (src={src}, textA='{text_a}', textB='{text_b}')")
+    _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag)
+    return None
+
+
+# ======== Debug saver (safe path, unique name) ========
+def _dump_ocr_debug(roi, focus, thr, tip_rect, debug_tag):
+    if os.getenv("SAVE_SCREENCAP", "1") == "0":
+        return
+    try:
+        dbgdir = _CFG.get("debug_dir", "/app/cache/debug")
+        os.makedirs(dbgdir, exist_ok=True)
+        ts = int(time.time()*1000)
+        cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_roi_{ts}.png"), roi)
+        cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_focus_{ts}.png"), focus)
+        cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_thr_{ts}.png"), thr)
+        if tip_rect:
+            tx, ty, tw, th = tip_rect
+            box = roi.copy()
+            cv2.rectangle(box, (tx,ty), (tx+tw,ty+th), (0,255,0), 2)
+            cv2.imwrite(os.path.join(dbgdir, f"{debug_tag}_box_{ts}.png"), box)
+    except Exception as e:
+        LOG.w(f"[debug dump] save fail: {e}")
 
 # ======== Slot empty checks (after insert / before upgrade taps) ========
 def _is_slot_empty(adb: ADBAdapter, slot_center: Tuple[int,int], slot_roi_size: Tuple[int,int]) -> bool:
@@ -178,6 +427,25 @@ def _is_slot_empty(adb: ADBAdapter, slot_center: Tuple[int,int], slot_roi_size: 
     emp = (v < 400.0 and edge_ratio < 0.03)
     LOG.i(f"[ตรวจช่อง] ว่าง={emp} (ฮิวริสติก var={v:.1f} edge={edge_ratio:.3f})")
     return emp
+
+def _yellow_digit_mask(bgr: np.ndarray) -> np.ndarray:
+    """
+    คืนค่ามาสก์สี (uint8 0/255) สำหรับข้อความ +n สีเหลืองเขียว
+    ปรับได้ด้วย ENV:
+      Y_H1, Y_H2 (0..179), Y_S_MIN (0..255), Y_V_MIN (0..255)
+    ดีฟอลต์ครอบช่วงเหลือง->เหลืองเขียว
+    """
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    h1 = int(os.getenv("Y_H1", "18"))   # ~18
+    h2 = int(os.getenv("Y_H2", "45"))   # ~45
+    s  = int(os.getenv("Y_S_MIN", "120"))
+    v  = int(os.getenv("Y_V_MIN", "140"))
+    mask = cv2.inRange(hsv, (h1, s, v), (h2, 255, 255))
+    # ทำให้สภาพอักษรต่อเนื่องขึ้น
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2,2), np.uint8), iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((2,2), np.uint8), iterations=1)
+    return mask
+
 
 # ======== Overlay result detection (OCR -> template -> color) ========
 def _overlay_detect(adb: ADBAdapter, overlay_rect: Tuple[int,int,int,int]) -> Optional[str]:
@@ -286,6 +554,43 @@ def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
     c["successes"] = 0
     c["base_level"] = None
 
+_DATASET_BASE = _CFG.get("dataset_dir", os.getenv("DATASET_DIR", "/app/data/dataset/level"))
+_NORM_SIZE = (32, 28)  # ปรับได้ตามต้องการ
+
+def _norm_roi_size(img, size=_NORM_SIZE):
+    return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+
+def _save_plus_dataset(roi_bgr: np.ndarray, *, level: Optional[int], method: str, debug_tag: str):
+    """
+    level=None หรือ -1  -> เก็บที่ plus_unlabeled/
+    level in 1..6       -> เก็บที่ plus{n}/ (เมื่อ SAVE_DATASET_ALL=1)
+    """
+    try:
+        if level is None or level < 1 or level > 6:
+            sub = "plus_unlabeled"
+        else:
+            if os.getenv("SAVE_DATASET_ALL", "0") != "1":
+                return  # ไม่เก็บกรณีอ่านได้ เว้นสั่งไว้
+            sub = f"plus{level}"
+
+        outdir = os.path.join(_DATASET_BASE, sub)
+        os.makedirs(outdir, exist_ok=True)
+
+        ts = int(time.time() * 1000)
+        # บันทึกขนาดเดิม
+        p_ori = os.path.join(outdir, f"{debug_tag}_{ts}_{method}_ori.png")
+        cv2.imwrite(p_ori, roi_bgr)
+
+        # บันทึกเวอร์ชัน normalize (เทรน/ทำเทมเพลตได้ทันที)
+        roi_gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+        norm = _norm_roi_size(roi_gray)
+        p_norm = os.path.join(outdir, f"{debug_tag}_{ts}_{method}_norm.png")
+        cv2.imwrite(p_norm, norm)
+
+        LOG.i(f"[dataset] saved → {p_ori} , {p_norm}")
+    except Exception as e:
+        LOG.w(f"[dataset] save fail: {e}")
+
 # ===================== Main step =====================
 def worker_step(controller) -> Dict[str, Any]:
     """
@@ -351,16 +656,31 @@ def worker_step(controller) -> Dict[str, Any]:
             time.sleep(min(0.05, remain))
             return {}
 
-        lvl = _read_bracket_level_from_status(adb, slot_status_roi)
+        # หา index และพิกัดของไอเทมปัจจุบัน
+        idx = c["item_idx"] % len(items)
+        ix, iy = items[idx]
+
+        # 1) พยายามอ่านจากมุมขวาบนของไอคอนในช่อง (60x60)
+        lvl = _read_level_from_icon_topright(
+            adb,
+            (ix, iy),
+            box_size=int(os.getenv("ICON_BOX_SIZE", "68")),
+            debug_tag=f"{dev_id}_idx{idx}"
+        )
+
+        # 2) ถ้ายังไม่ได้ ลองอ่านจาก tooltip (กรอบคำอธิบาย) เป็น fallback
+        if lvl is None:
+            lvl = _read_bracket_level_from_status(adb, slot_status_roi)
+
         c["base_level"] = lvl if isinstance(lvl, int) else None
 
-        if lvl is None or lvl <= 4:
-            LOG.i(f"[{dev_id}] ตัดสินใจ INSERT (level={lvl})")
+        if lvl is None or (isinstance(lvl, int) and lvl < target):
+            LOG.i(f"[{dev_id}] ตัดสินใจ INSERT (level={lvl}, target={target})")
             c["stage"] = "insert"
             c["successes"] = 0
             c["last_action_ts"] = time.time()
         else:
-            LOG.i(f"[{dev_id}] ข้ามไอเทมนี้ (level={lvl} >= 5)")
+            LOG.i(f"[{dev_id}] ข้ามไอเทมนี้ (level={lvl} >= target={target})")
             _next_item(dev_id, adb, items, swipe_cfg, c)
         return {}
 
@@ -418,18 +738,10 @@ def worker_step(controller) -> Dict[str, Any]:
 
         # fail ทันที
         if verdict == "fail":
-            cur = base + c["successes"]
-            attempt_level = cur + 1
-            LOG.i(f"[{dev_id}] ผล: ล้มเหลว (กำลังไป +{attempt_level})")
-            if cur >= _BREAK_LEVEL_MIN:
-                _summary().add_break(controller.id, attempt_level)
-                LOG.i(f"[{dev_id}] แตกที่ +{attempt_level} (>= min {_BREAK_LEVEL_MIN}) → ไปชิ้นถัดไป")
-                _next_item(dev_id, adb, items, swipe_cfg, c)
-                out["break_at_level"] = attempt_level
-                return out
-            else:
-                LOG.i(f"[{dev_id}] ล้มเหลวแต่ยัง <{_BREAK_LEVEL_MIN} → ลองต่อ")
-                return out
+            # เดิม: มีเงื่อนไข break เมื่อ cur >= _BREAK_LEVEL_MIN (ค่าเริ่มต้น 4)
+            # แก้: ไม่ break — ให้พยายามต่อจนถึง target
+            LOG.i(f"[{dev_id}] ผล: ล้มเหลว → พยายามต่อจนถึง target={target}")
+            return out
 
         # Not clear → poll within 1.5s
         t0 = time.time()
@@ -446,18 +758,8 @@ def worker_step(controller) -> Dict[str, Any]:
             LOG.i(f"[{dev_id}] (ดีเลย์) สำเร็จ → success={c['successes']}")
             return out
         elif got == "fail":
-            cur = base + c["successes"]
-            attempt_level = cur + 1
-            LOG.i(f"[{dev_id}] (ดีเลย์) ล้มเหลวที่ +{attempt_level}")
-            if cur >= _BREAK_LEVEL_MIN:
-                _summary().add_break(controller.id, attempt_level)
-                LOG.i(f"[{dev_id}] แตกที่ +{attempt_level} → ไปชิ้นถัดไป")
-                _next_item(dev_id, adb, items, swipe_cfg, c)
-                out["break_at_level"] = attempt_level
-                return out
-            else:
-                LOG.i(f"[{dev_id}] ยัง <{_BREAK_LEVEL_MIN} → ลองต่อ")
-                return out
+            LOG.i(f"[{dev_id}] (ดีเลย์) ล้มเหลว → พยายามต่อจนถึง target={target}")
+            return out
 
         LOG.i(f"[{dev_id}] overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป")
         return out
