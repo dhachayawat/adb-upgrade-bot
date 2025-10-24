@@ -92,10 +92,11 @@ services:
       CONF_SLOT_EMPTY_THR: "0.85"
       CONF_SLOT_EMPTY_UNSURE: "0.75"
       CONF_PLUS5_THR: "0.83"
+      RUN_MODE: "mp"
 
       DEBUG: "1"   # ตั้งเป็น "1" ชั่วคราวถ้าต้องการรูป debug
     ports:
-      - "8765:8765"
+      - "8888:8765"
     volumes:
       - ./templates:/app/templates:ro
       - ./cache:/app/cache         # << เมานต์โฟลเดอร์ cache ออกมาที่โฮสต์

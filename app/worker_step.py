@@ -407,7 +407,7 @@ def _overlay_detect(adb: ADBAdapter, overlay_rect: Tuple[int,int,int,int]) -> Op
 
     # รอขั้นต่ำก่อนเริ่มอ่าน
     while time.time() - t0 < min_wait:
-        time.sleep(0.02)
+        time.sleep(0.002)
 
     while time.time() - t0 < max_wait:
         time.sleep(poll_int)
@@ -527,9 +527,9 @@ def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
         LOG.i(f"[{dev_id}] SWIPE after {len(items)} items → ({x},{y})→({x},{y+dy}) ms={ms}")
         try:
             adb.tap(970, 120)   # touch for close tooltip, safe
-            time.sleep(0.25)
+            time.sleep(0.025)
             adb.swipe(x, y, dy=dy, ms=ms)
-            time.sleep(0.25)
+            time.sleep(0.025)
         except Exception as e:
             LOG.w(f"[{dev_id}] swipe fail: {e}")
     c["stage"] = "pick"
@@ -733,7 +733,7 @@ def worker_step(controller) -> Dict[str, Any]:
         if not items:
             LOG.w(f"[{dev_id}] ไม่พบ items ใน config")
             _log_web(dev_id, 'ไม่พบ items ใน config', "WARN")
-            time.sleep(0.1)
+            time.sleep(0.01)
             return {}
 
         idx = c["item_idx"] % len(items)
@@ -801,7 +801,7 @@ def worker_step(controller) -> Dict[str, Any]:
 
         LOG.i(f"[{dev_id}] INSERT: done → รอ 0.3s")
         _log_web(dev_id, 'INSERT: done → รอ 0.3s')
-        time.sleep(0.3)
+        time.sleep(0.03)
 
         c["stage"] = "inspect"
         c["last_action_ts"] = time.time()
@@ -894,7 +894,7 @@ def worker_step(controller) -> Dict[str, Any]:
             t0 = time.time()
             got = None
             while time.time() - t0 < 1.5:
-                time.sleep(0.3)
+                time.sleep(0.03)
                 chk = _overlay_detect(adb, overlay_abs)
                 if chk in ("success", "fail"):
                     got = chk
@@ -977,7 +977,7 @@ def worker_step(controller) -> Dict[str, Any]:
         t0 = time.time()
         got = None
         while time.time() - t0 < 1.5:
-            time.sleep(0.3)
+            time.sleep(0.03)
             chk = _overlay_detect(adb, overlay_abs)
             if chk in ("success", "fail"):
                 got = chk
@@ -1041,7 +1041,7 @@ def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
         t0_item = time.time()
         while not ctrl.stop_event.is_set():
             if ctrl.pause_event.is_set():
-                time.sleep(0.2)
+                time.sleep(0.02)
                 continue
             try:
                 step_fn(ctrl)
