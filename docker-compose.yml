@@ -6,6 +6,9 @@ services:
 
     environment:
       DEVICE: "host.docker.internal:5565"
+
+      POST_UPGRADE_WAIT: "0.72" # ปรับจูนค่านี้ 0.6-1.2 รอเอฟเฟคการอัปเกรด
+      
       MAX_ITEM_TIME_SEC: "0"
       ADB_RETRY_MAX: "6"
       ADB_RETRY_SLEEP: "0.6"
