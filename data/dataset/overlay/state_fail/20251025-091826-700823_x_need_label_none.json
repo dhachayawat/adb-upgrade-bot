@@ -1,0 +1,30 @@
+{
+  "ts": "20251025-091826-700823",
+  "dev_id": "?",
+  "verdict": null,
+  "tag": "need_label",
+  "overlay_rect": [
+    717,
+    236,
+    269,
+    123
+  ],
+  "roi_shape": [
+    123,
+    269
+  ],
+  "match": {
+    "best": {
+      "score": 0.5172394921190894,
+      "label": "fail",
+      "phash_sim": 0.625,
+      "orb_ratio": 0.4290718038528897,
+      "orb_good": 245,
+      "ref_path": "/app/data/dataset/overlay/state_fail/20251025-091616-582447_x_need_label_none.png",
+      "ref_w": 269,
+      "ref_h": 123
+    },
+    "armed": true
+  },
+  "dataset_dir": "/app/data/dataset/overlay"
+}

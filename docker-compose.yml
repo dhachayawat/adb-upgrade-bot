@@ -93,6 +93,7 @@ services:
       CONF_SLOT_EMPTY_UNSURE: "0.75"
       CONF_PLUS5_THR: "0.83"
       RUN_MODE: "mp"
+      OVERLAY_DATASET_DIR: "/app/data/dataset/overlay"
 
       DEBUG: "1"   # ตั้งเป็น "1" ชั่วคราวถ้าต้องการรูป debug
     ports:
@@ -102,6 +103,7 @@ services:
       - ./cache:/app/cache         # << เมานต์โฟลเดอร์ cache ออกมาที่โฮสต์
       - ./data:/app/data            # << ใหม่: เก็บไฟล์คอนฟิกถาวร /app/data/config/config.json
       - ./logs:/app/logs
+      
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"

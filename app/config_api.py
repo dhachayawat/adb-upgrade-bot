@@ -13,28 +13,21 @@ from .summary_store import SummaryStore
 from .core.adb_adapter import ADBAdapter, ADBError
 from . import rtlog as LOG
 
-# ---- เลือกโหมดรัน: thread (เดิม) หรือ mp (แยกโปรเซส) ----
 RUN_MODE = os.getenv("RUN_MODE", "thread").lower()
 if RUN_MODE == "mp":
-    # ต้องมี app/core/mp_manager.py
     from .core.mp_manager import MPDeviceManager as DeviceManager
 else:
     from .core.manager import DeviceManager
 
 bp_api = Blueprint("config_api", __name__, url_prefix="/api")
 
-# ---- Singletons แบบง่าย ----
 _cfg_store: Optional[ConfigStore] = None
 _mgr: Optional[DeviceManager] = None
 _summary: Optional[SummaryStore] = None
+_weblog_q = None
 
 def init_api(step_fn=None) -> None:
-    """
-    สร้าง/_รีคอนฟิก manager ตาม RUN_MODE
-    - thread: ใช้ DeviceManager(step_fn=...)
-    - mp    : ใช้ MPDeviceManager (เมิน step_fn)
-    """
-    global _cfg_store, _mgr, _summary
+    global _cfg_store, _mgr, _summary, _weblog_q
     if _cfg_store is None:
         _cfg_store = ConfigStore()
     if _summary is None:
@@ -43,6 +36,17 @@ def init_api(step_fn=None) -> None:
     if _mgr is None:
         if RUN_MODE == "mp":
             _mgr = DeviceManager(_cfg_store)
+            if _weblog_q is None:
+                try:
+                    _weblog_q = LOG.start_mp_bridge()
+                except Exception as e:
+                    LOG.w(f"[config_api] start_mp_bridge failed: {e}")
+                    _weblog_q = None
+            try:
+                if hasattr(_mgr, "set_weblog_queue"):
+                    _mgr.set_weblog_queue(_weblog_q)
+            except Exception as e:
+                LOG.w(f"[config_api] set_weblog_queue failed: {e}")
         else:
             _mgr = DeviceManager(_cfg_store, step_fn=step_fn)
     else:
@@ -51,8 +55,14 @@ def init_api(step_fn=None) -> None:
                 _mgr.set_step_fn(step_fn)
             except Exception:
                 pass
+        if RUN_MODE == "mp" and hasattr(_mgr, "set_weblog_queue"):
+            try:
+                if _weblog_q is None:
+                    _weblog_q = LOG.start_mp_bridge()
+                _mgr.set_weblog_queue(_weblog_q)
+            except Exception as e:
+                LOG.w(f"[config_api] set_weblog_queue (post-init) failed: {e}")
 
-# ---------- Devices ----------
 @bp_api.get("/devices")
 def api_devices():
     init_api()
@@ -68,10 +78,6 @@ def api_device_status(device_id: str):
 
 @bp_api.post("/devices/<device_id>/step-once")
 def api_device_step_once(device_id: str):
-    """
-    เดิม: ยิง worker_step ครั้งเดียว (สำหรับ debug)
-    โหมด mp: ปิดเพื่อหลีกเลี่ยง cross-process manipulation
-    """
     init_api()
     if RUN_MODE == "mp":
         return jsonify({"error": "unsupported in RUN_MODE=mp"}), 409
@@ -87,9 +93,6 @@ def api_device_step_once(device_id: str):
 
 @bp_api.post("/devices/<device_id>/tap")
 def api_device_tap(device_id: str):
-    """
-    ใช้ ADBAdapter แบบชั่วคราวต่อคำสั่ง (ปลอดภัยทั้ง thread/mp)
-    """
     init_api()
     ctrl = _mgr.get(device_id)
     if not ctrl:
@@ -113,14 +116,8 @@ def api_device_shot(device_id: str):
     ctrl = _mgr.get(device_id)
     if not ctrl:
         return jsonify({"error": "not found"}), 404
-
     save_q = request.args.get("save", "0")
-    want_save = (
-        os.getenv("DEBUG", "0") == "1"
-        or os.getenv("SAVE_SCREENCAP", "0") == "1"
-        or save_q == "1"
-    )
-
+    want_save = (os.getenv("DEBUG", "0") == "1" or os.getenv("SAVE_SCREENCAP", "0") == "1" or save_q == "1")
     try:
         dev_serial = getattr(ctrl, "device", device_id)
         adb = ADBAdapter(dev_serial)
@@ -129,7 +126,6 @@ def api_device_shot(device_id: str):
         ok, buf = cv2.imencode(".png", img)
         if not ok:
             return jsonify({"error": "encode failed"}), 500
-
         saved_path = None
         if want_save:
             try:
@@ -144,7 +140,6 @@ def api_device_shot(device_id: str):
                 saved_path = fpath
             except Exception as e:
                 LOG.w(f"[{device_id}] บันทึกสกรีนช็อตไม่สำเร็จ: {e}")
-
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         try:
             tmp.write(buf.tobytes()); tmp.flush(); tmp.close()
@@ -155,7 +150,6 @@ def api_device_shot(device_id: str):
         finally:
             try: os.remove(tmp.name)
             except: pass
-
     except ADBError as e:
         return jsonify({"error": f"adb: {str(e)}"}), 502
     except Exception as e:
@@ -167,32 +161,23 @@ def api_device_start(device_id: str):
     ctrl = _mgr.get(device_id)
     if not ctrl:
         return jsonify({"error": "not found"}), 404
-
-    # เช็ค ADB ก่อนสตาร์ท
     try:
         dev_serial = getattr(ctrl, "device", device_id)
-        adb = ADBAdapter(dev_serial)
-        adb.ensure_connected()
+        adb = ADBAdapter(dev_serial); adb.ensure_connected()
     except Exception as e:
         return jsonify({"error": "adb", "message": str(e), "status": ctrl.status()}), 502
-
     try:
         ok = _mgr.start(device_id)
         time.sleep(0.1)
-        alive = bool(_mgr.is_alive(device_id)) if hasattr(_mgr, "is_alive") else bool(getattr(ctrl, "thread", None) and ctrl.thread.is_alive())
+        alive = bool(getattr(_mgr, "is_alive", None) and _mgr.is_alive(device_id)) \
+                or bool(getattr(ctrl, "thread", None) and ctrl.thread.is_alive())
         return jsonify({"ok": bool(ok), "alive": alive, "status": ctrl.status()})
     except RuntimeError as e:
         return jsonify({"error": "conflict", "message": str(e), "status": ctrl.status()}), 409
     except Exception as e:
         import traceback, io
-        tb = io.StringIO()
-        traceback.print_exc(file=tb)
-        return jsonify({
-            "error": "internal",
-            "message": str(e),
-            "traceback": tb.getvalue(),
-            "status": ctrl.status()
-        }), 500
+        tb = io.StringIO(); traceback.print_exc(file=tb)
+        return jsonify({"error": "internal", "message": str(e), "traceback": tb.getvalue(), "status": ctrl.status()}), 500
 
 @bp_api.post("/devices/<device_id>/pause")
 def api_device_pause(device_id: str):
@@ -252,7 +237,6 @@ def api_device_target_level(device_id: str):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-# ---------- Manage devices list ----------
 @bp_api.post("/devices")
 def api_devices_upsert():
     init_api()
@@ -286,7 +270,16 @@ def api_device_logs(device_id: str):
     if not ctrl:
         return jsonify({"error":"not found"}), 404
 
-    # พยายามดึง log รายอุปกรณ์จาก controller ถ้ามี
+    # 1) ลองอ่านจากไฟล์ต่อ-device ก่อน
+    try:
+        from . import rtlog as LOG
+        txt = LOG.get_device_text(device_id, lines=lines)
+        if txt.strip():
+            return jsonify({"text": txt})
+    except Exception:
+        pass
+
+    # 2) พยายามดึง log จาก controller ถ้ามี
     try:
         if hasattr(ctrl, "log_tail"):
             text = ctrl.log_tail(lines)
@@ -298,20 +291,25 @@ def api_device_logs(device_id: str):
     except Exception:
         pass
 
-    # Fallback: global log
+    # 3) Fallback: global text buffer
     text = LOG.get_text(lines)
     return jsonify({"text": text})
+
 
 @bp_api.get("/devices/<device_id>/weblogs")
 def api_device_weblogs(device_id: str):
     """
     คืน rich logs (HTML) สำหรับอุปกรณ์ที่ระบุ
     รูปแบบ: [{ts, dev, html, lvl}, ...]
+    - มี fallback: ถ้ากรองแล้วว่าง จะคืนทั้งบัฟเฟอร์เพื่อช่วยดีบัก
     """
     init_api()
     lines = int(request.args.get("lines", "400") or 400)
     try:
         data = LOG.web_dump(lines=lines, device=device_id)
+        if not data:
+            # fallback: ไม่กรอง — เพื่อให้เห็นว่าจริง ๆ มีล็อกไหม
+            data = LOG.web_dump(lines=lines, device=None)
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -325,7 +323,6 @@ def api_device_weblogs_clear(device_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ---------- Dashboard / Summary ----------
 @bp_api.get("/dashboard")
 def api_dashboard():
     init_api()
@@ -337,7 +334,6 @@ def api_summary():
     days = int(request.args.get("days", "7"))
     return jsonify({"days": _summary.get_days(days)})
 
-# ---------- Logs (tail) ----------
 @bp_api.get("/logs")
 def api_logs():
     return jsonify({"text": LOG.get_text(400)})
@@ -348,7 +344,6 @@ def api_device_snap(device_id: str):
     ctrl = _mgr.get(device_id)
     if not ctrl:
         return jsonify({"error":"not found"}), 404
-
     from datetime import datetime
     try:
         dev_serial = getattr(ctrl, "device", device_id)
@@ -377,13 +372,11 @@ def api_device_reconnect(device_id: str):
         return jsonify({"error":"not found"}), 404
     try:
         dev_serial = getattr(ctrl, "device", device_id)
-        adb = ADBAdapter(dev_serial)
-        adb.ensure_connected()
+        adb = ADBAdapter(dev_serial); adb.ensure_connected()
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
-# ---------- Config file helpers ----------
 def _cfg_path() -> Path:
     return Path(os.getenv("CONFIG_DEFAULTS_FILE", "/app/data/config/config.json"))
 
@@ -400,8 +393,7 @@ def _write_json_atomic(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+        json.dump(data, f, ensure_ascii=False, indent=2); f.write("\n")
     tmp.replace(path)
 
 @bp_api.get("/config")

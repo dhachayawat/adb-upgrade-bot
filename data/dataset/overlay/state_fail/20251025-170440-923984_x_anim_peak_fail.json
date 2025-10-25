@@ -1,0 +1,30 @@
+{
+  "ts": "20251025-170440-923984",
+  "dev_id": "?",
+  "verdict": "fail",
+  "tag": "anim_peak",
+  "overlay_rect": [
+    717,
+    236,
+    269,
+    123
+  ],
+  "roi_shape": [
+    123,
+    269
+  ],
+  "match": {
+    "best": {
+      "score": 0.7308152173913044,
+      "label": "fail",
+      "phash_sim": 0.625,
+      "orb_ratio": 0.8173913043478261,
+      "orb_good": 470,
+      "ref_path": "/app/data/dataset/overlay/state_fail/20251025-093240-533433_x_need_label_none.png",
+      "ref_w": 269,
+      "ref_h": 123
+    },
+    "armed": true
+  },
+  "dataset_dir": "/app/data/dataset/overlay"
+}

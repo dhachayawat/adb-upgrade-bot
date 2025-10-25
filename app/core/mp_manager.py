@@ -7,7 +7,8 @@ import time
 import os
 
 from ..config_store import ConfigStore, Device
-from .. import rtlog as LOG
+from .. import rtlog as LOG          # สำหรับ text log ปกติ และใช้ start_mp_bridge() ใน main ผ่าน config_api
+from .. import rtlog as RTLOG        # ใช้ชื่อ RTLOG ชัด ๆ เวลาผูก queue ใน child
 
 from ..worker_step import worker_loop, worker_step
 from .controller import Controller
@@ -21,13 +22,29 @@ class _DevRec:
     pause_ev: Optional[mp.Event] = None
     started_at: float = 0.0
     items_done: int = 0
-    paused: bool = False  # << สำคัญ: เพิ่มฟิลด์นี้
+    paused: bool = False  # << สำคัญ: 状態 pause
+
 
 class MPDeviceManager:
+    """
+    Multiprocessing device manager:
+      - โปรเซสหลัก (main) เรียก start()/stop()/pause()/resume()
+      - โปรเซสลูก (worker) รัน worker_loop + ส่ง Rich logs กลับ main ผ่าน Queue
+    """
     def __init__(self, cfg_store: ConfigStore, step_fn: Callable[..., Any] | None = None):
         self._cfg = cfg_store
         self._rec: Dict[str, _DevRec] = {}
+        self._weblog_queue: Optional[mp.Queue] = None  # << Queue สำหรับ Rich logs (ตั้งจาก config_api.init_api)
         self._preload_from_cfg()
+
+    # ---------------- MP Rich-log queue bridge ----------------
+    def set_weblog_queue(self, q: Optional[mp.Queue]) -> None:
+        """
+        เรียกจากโปรเซสหลัก (เช่นใน config_api.init_api หลัง RTLOG.start_mp_bridge())
+        เพื่อให้ manager ถือคิวกลางไว้ ส่งเข้าโปรเซสลูกทุกครั้งที่ start()
+        """
+        self._weblog_queue = q
+        LOG.i(f"[mp_manager] weblog_queue set: {bool(q)}")
 
     # ---------------- preload ----------------
     def _preload_from_cfg(self) -> None:
@@ -54,7 +71,7 @@ class MPDeviceManager:
                             try:
                                 self._rec.setdefault(d["id"], _DevRec(dev=Device(
                                     id=str(d["id"]),
-                                    name=str(d.get("name", d["id"])),
+                                    name=str(d.get("name", d["id"])) if d.get("name") else str(d["id"]),
                                     device=str(d["device"]),
                                     target_level=int(d.get("target_level", 5)),
                                 )))
@@ -76,7 +93,7 @@ class MPDeviceManager:
                         if isinstance(item, dict) and "id" in item and "device" in item:
                             dev = Device(
                                 id=str(item["id"]),
-                                name=str(item.get("name", item["id"])),
+                                name=str(item.get("name", item["id"])) if item.get("name") else str(item["id"]),
                                 device=str(item["device"]),
                                 target_level=int(item.get("target_level", 5)),
                             )
@@ -90,8 +107,22 @@ class MPDeviceManager:
     # ---------------- process target ----------------
     @staticmethod
     def _device_proc(dev_id: str, dev_serial: str, target_level: int,
-                     stop_ev: mp.Event, pause_ev: mp.Event, sleep_sec: float = 0.10):
+                     stop_ev: mp.Event, pause_ev: mp.Event,
+                     weblog_queue: Optional[mp.Queue],
+                     sleep_sec: float = 0.10):
+        """
+        Entry point ของโปรเซสลูก:
+          - ผูก RTLOG.attach_mp_queue(weblog_queue) เพื่อส่ง Rich logs กลับ main
+          - สร้าง Controller แล้วเข้าลูป worker
+        """
         try:
+            # attach queue เพื่อให้ rtlog.web ส่งกลับ main
+            try:
+                if weblog_queue is not None:
+                    RTLOG.attach_mp_queue(weblog_queue)
+            except Exception as _e:
+                LOG.w(f"[{dev_id}] attach_mp_queue failed: {_e}")
+
             LOG.i(f"[{dev_id}] MP worker start (target=+{target_level})")
             ctrl = Controller(device=dev_serial, target_level=target_level,
                               stop_event=stop_ev, pause_event=pause_ev)
@@ -106,7 +137,7 @@ class MPDeviceManager:
     # ---------------- status helpers ----------------
     @staticmethod
     def _status_from_rec(r: _DevRec) -> dict:
-        # ป้องกันเรคอร์ดที่ถูกสร้างก่อนเวอร์ชันนี้ (ไม่มีฟิลด์ paused)
+        # guard สำหรับเวอร์ชันเก่า
         if not hasattr(r, "paused"):
             setattr(r, "paused", False)
         paused = bool(getattr(r, "paused", False))
@@ -124,7 +155,7 @@ class MPDeviceManager:
 
             "state": state,            # running/paused/idle
             "alive": alive,
-            "thread_alive": alive,     # ความเข้ากันได้กับโค้ดเดิม
+            "thread_alive": alive,     # เพื่อความเข้ากันได้
             "is_paused": paused,
 
             "can_start": not alive,
@@ -219,7 +250,12 @@ class MPDeviceManager:
 
         p = mp.Process(
             target=MPDeviceManager._device_proc,
-            args=(dev_id, dev_serial, target, r.stop_ev, r.pause_ev, float(os.getenv("MP_SLEEP_SEC", "0.10"))),
+            args=(
+                dev_id, dev_serial, target,
+                r.stop_ev, r.pause_ev,
+                self._weblog_queue,                         # << ส่งคิวให้โปรเซสลูก
+                float(os.getenv("MP_SLEEP_SEC", "0.10")),
+            ),
             daemon=True,
         )
         p.start()
@@ -285,4 +321,5 @@ class MPDeviceManager:
                 pass
 
     def set_step_fn(self, step_fn: Callable[..., Any]) -> None:
+        # โหมด MP จะไม่ใช้ step_fn จากภายนอก (worker_step นำเข้าในโปรเซสลูกแล้ว)
         LOG.w("[mp_manager] set_step_fn ignored in RUN_MODE=mp")

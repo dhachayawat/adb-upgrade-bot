@@ -6,6 +6,8 @@ import re, time
 import cv2
 import numpy as np
 import html as _html  # สำหรับสร้าง HTML ไปโชว์บนเว็บ
+import json, glob
+from datetime import datetime
 
 from .core.adb_adapter import ADBAdapter
 from .config_store import ConfigStore
@@ -15,12 +17,13 @@ from . import cv_utils as CV
 
 # ===================== Global config (normalized via ConfigStore) =====================
 _CFG = ConfigStore().load_defaults()
+
 _SUMMARY: Optional[SummaryStore] = None
 _DEVICE_CTX: Dict[str, dict] = {}  # per-device state
 _BRACKET_NUM_RE = re.compile(r"[［\[\(（]\s*(\d{1,2})\s*[］\]\)）]")
 _PLUS_RE = re.compile(r"\+?\s*(\d{1,2})")
 
-# -------------------- Quick getters --------------------
+# -------------------- Quick helpers --------------------
 def _summary() -> SummaryStore:
     global _SUMMARY
     if _SUMMARY is None:
@@ -58,6 +61,16 @@ def _items():
 def _swipe():
     s = _CFG.get("swipe") or {}
     return dict(x=int(s.get("x", 0)), y=int(s.get("y", 0)), dy=int(s.get("dy", 0)), ms=int(s.get("ms", 300)))
+
+# ---- Utils for robust ndarray checks & image prep ----
+def _truthy_img(arr) -> bool:
+    return (arr is not None) and hasattr(arr, "size") and (arr.size > 0) and (getattr(arr, "shape", (0, 0))[0] > 0) and (getattr(arr, "shape", (0, 0))[1] > 0)
+
+def _prep_gray_for_match(bgr_or_gray: np.ndarray) -> np.ndarray:
+    g = bgr_or_gray if len(bgr_or_gray.shape) == 2 else cv2.cvtColor(bgr_or_gray, cv2.COLOR_BGR2GRAY)
+    g = cv2.equalizeHist(g)
+    g = cv2.GaussianBlur(g, (3, 3), 0)
+    return g
 
 # thresholds / timings (fallback to env vars if provided)
 _CONF_INSERT_THR = float(_CFG.get("conf_insert_thr", os.getenv("CONF_INSERT_THR", "0.86")))
@@ -127,7 +140,6 @@ def _ocr_text(gray: np.ndarray, psm: int = 7) -> str:
 def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, int], wait_pre: Optional[float] = None) -> bool:
     if wait_pre is None:
         wait_pre = float(os.getenv("PRE_INSERT_DELAY", "0.8"))
-    # time.sleep(wait_pre)
     img = _grab(adb)
     x1, y1, w, h = insert_roi_rect
     if w > 0 and h > 0:
@@ -152,7 +164,6 @@ def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, 
 
 def _icon_roi_norm(adb, center_xy, box_size: int = 68) -> np.ndarray:
     """คืนภาพ ROI (gray) ของมุมขวาบนไอคอนแบบ normalize 32x28 เพื่อนำไปเปรียบเทียบ"""
-    import cv2, numpy as np
     (cx, cy) = center_xy
     img = _grab(adb)
     crop, (x0, y0) = _crop_center(img, cx, cy, box_size, box_size)
@@ -168,7 +179,6 @@ def _icon_roi_norm(adb, center_xy, box_size: int = 68) -> np.ndarray:
     norm = cv2.resize(gray, (32, 28), interpolation=cv2.INTER_AREA)
     return norm
 
-
 # ======== Snapshot for icon-level reading ========
 def _save_item_lv_snap(crop, roi, thr, x0, y0, x1, y1, w, h, level, method, debug_tag: str):
     try:
@@ -178,7 +188,7 @@ def _save_item_lv_snap(crop, roi, thr, x0, y0, x1, y1, w, h, level, method, debu
         ts = int(time.time() * 1000)
         cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_crop_{method}_lv{level}.png"), crop)
         cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_roi_{method}_lv{level}.png"), roi)
-        if thr is not None:
+        if _truthy_img(thr):
             cv2.imwrite(os.path.join(outdir, f"{debug_tag}_{ts}_thr_{method}_lv{level}.png"), thr)
         vis = crop.copy()
         cv2.rectangle(vis, (x1 - x0, y1 - y0), (x1 - x0 + w, y1 - y0 + h), (0, 255, 0), 2)
@@ -186,7 +196,7 @@ def _save_item_lv_snap(crop, roi, thr, x0, y0, x1, y1, w, h, level, method, debu
     except Exception as e:
         LOG.w(f"[item_lv_snap] save fail: {e}")
 
-# ======== Dataset helpers ========
+# ======== Dataset helpers (icon + overlay) ========
 _DATASET_BASE = _CFG.get("dataset_dir", os.getenv("DATASET_DIR", "/app/data/dataset/level"))
 _NORM_SIZE = (32, 28)  # ขนาด normalize สำหรับเทมเพลต bank
 
@@ -355,163 +365,327 @@ def _yellow_digit_mask(bgr: np.ndarray) -> np.ndarray:
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((2,2), np.uint8), iterations=1)
     return mask
 
-# ======== Overlay detector (smart fused) ========
-def _overlay_detect(adb: ADBAdapter, overlay_rect: Tuple[int,int,int,int]) -> Optional[str]:
-    """
-    return: 'success' / 'fail' / None
+# ====== ตัวช่วยบันทึก overlay dataset ======
+_OVERLAY_DATASET_DIR = os.getenv("OVERLAY_DATASET_DIR", "/app/data/dataset/overlay")
+_OVERLAY_SNAP = os.getenv("OVERLAY_SNAP", "1") == "1"
+_OVERLAY_SNAP_UNLABELED = os.getenv("OVERLAY_SNAP_UNLABELED", "1") == "1"
 
-    เวอร์ชัน smart:
-      - รอแบบไดนามิกด้วย OVERLAY_MIN_WAIT..OVERLAY_MAX_WAIT และ OVERLAY_POLL_INTERVAL
-      - ตรวจ motion + โทนสีเอฟเฟกต์ (อุ่น=fail, เย็น/ขาว=success) + template + OCR แล้วฟิวส์คะแนน
-      - ถ้าไม่มีสัญญาณ (สีต่ำ + motion ต่ำ) → ถือว่ายังไม่ upgrade → คืน None
-    """
-    def _color_scores(bgr_roi):
-        hsv = cv2.cvtColor(bgr_roi, cv2.COLOR_BGR2HSV)
-        # fail (อุ่น/ร้อน)
-        f_or_h1 = int(os.getenv("FAIL_ORANGE_H_MIN", _CFG.get("FAIL_ORANGE_H_MIN", 10)))
-        f_or_h2 = int(os.getenv("FAIL_ORANGE_H_MAX", _CFG.get("FAIL_ORANGE_H_MAX", 25)))
-        f_s     = int(os.getenv("FAIL_S_MIN",        _CFG.get("FAIL_S_MIN",        80)))
-        f_v     = int(os.getenv("FAIL_V_MIN",        _CFG.get("FAIL_V_MIN",        80)))
-        fail_orange = cv2.inRange(hsv, (f_or_h1, f_s, f_v), (f_or_h2, 255, 255))
-        f_r1 = cv2.inRange(hsv, (0,   f_s, f_v), (5,   255, 255))
-        f_r2 = cv2.inRange(hsv, (170, f_s, f_v), (180, 255, 255))
-        warm_mask = cv2.bitwise_or(fail_orange, cv2.bitwise_or(f_r1, f_r2))
-        # success (เย็น/ฟ้า)
-        s_h1 = int(os.getenv("SUCCESS_H_MIN", _CFG.get("SUCCESS_H_MIN", 90)))
-        s_h2 = int(os.getenv("SUCCESS_H_MAX", _CFG.get("SUCCESS_H_MAX", 140)))
-        s_s  = int(os.getenv("SUCCESS_S_MIN", _CFG.get("SUCCESS_S_MIN", 60)))
-        s_v  = int(os.getenv("SUCCESS_V_MIN", _CFG.get("SUCCESS_V_MIN", 80)))
-        cool_mask = cv2.inRange(hsv, (s_h1, s_s, s_v), (s_h2, 255, 255))
-        # success (ขาว)
-        w_s_max = int(os.getenv("SUCCESS_WHITE_S_MAX", _CFG.get("SUCCESS_WHITE_S_MAX", 40)))
-        w_v_min = int(os.getenv("SUCCESS_WHITE_V_MIN", _CFG.get("SUCCESS_WHITE_V_MIN", 200)))
-        white_mask = cv2.inRange(hsv, (0, 0, w_v_min), (180, w_s_max, 255))
-        area = max(1, bgr_roi.shape[0] * bgr_roi.shape[1])
-        warm_ratio  = float(cv2.countNonZero(warm_mask))  / float(area)
-        cool_ratio  = float(cv2.countNonZero(cool_mask))  / float(area)
-        white_ratio = float(cv2.countNonZero(white_mask)) / float(area)
-        return warm_ratio, cool_ratio, white_ratio
+_SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 
-    def _motion_score(prev_gray, cur_bgr):
-        g = cv2.cvtColor(cur_bgr, cv2.COLOR_BGR2GRAY)
-        if prev_gray is None:
-            return g, 0.0
-        diff = cv2.absdiff(g, prev_gray)
-        return g, float(np.mean(diff)) / 255.0
+def _safe_name(s: str, maxlen: int = 40) -> str:
+    return _SAFE_NAME_RE.sub("-", str(s))[:maxlen].strip("-") or "x"
 
-    # --- พารามิเตอร์รอ/โพลล์ ---
-    min_wait   = float(os.getenv("OVERLAY_MIN_WAIT",   "0.25"))
-    max_wait   = float(os.getenv("OVERLAY_MAX_WAIT",   "1.80"))
-    poll_int   = float(os.getenv("OVERLAY_POLL_INTERVAL", "0.12"))
-    mot_thr    = float(os.getenv("OVERLAY_MOTION_THR", "0.015"))
-
-    succ_min = float(os.getenv("SUCCESS_COLOR_MIN", _CFG.get("SUCCESS_COLOR_MIN", 0.06)))
-    fail_min = float(os.getenv("FAIL_COLOR_MIN",    _CFG.get("FAIL_COLOR_MIN",    0.06)))
-
-    tm_succ_thr = float(os.getenv("CONF_SUCCESS_THR", _CFG.get("CONF_SUCCESS_THR", 0.83)))
-    tm_fail_thr = float(os.getenv("CONF_FAIL_THR",    _CFG.get("CONF_FAIL_THR",    0.83)))
-
-    w_ocr   = float(os.getenv("OVERLAY_WEIGHT_OCR",   "0.50"))
-    w_tm    = float(os.getenv("OVERLAY_WEIGHT_TM",    "0.30"))
-    w_color = float(os.getenv("OVERLAY_WEIGHT_COLOR", "0.20"))
-    margin  = float(os.getenv("OVERLAY_CONF_MARGIN",  "0.15"))
-
-    t0 = time.time()
-    prev_gray = None
-    seen_signal = False
-    best = dict(verdict=None, conf=0.0, ocr="", tm_s=0.0, tm_f=0.0,
-                warm=0.0, cool=0.0, white=0.0, motion=0.0)
-
-    # รอขั้นต่ำก่อนเริ่มอ่าน
-    while time.time() - t0 < min_wait:
-        time.sleep(0.002)
-
-    while time.time() - t0 < max_wait:
-        time.sleep(poll_int)
-        img = _grab(adb)
-        roi, _ = _crop_rect(img, overlay_rect)
-
-        # motion
-        prev_gray, mot = _motion_score(prev_gray, roi)
-
-        # สี
-        warm, cool, white = _color_scores(roi)
-        coolwhite = cool + white
-
-        # template (คะแนนดิบ 0..1)
-        _, scs = CV.match_center_multiscale(roi, CV.read_tpl("success.png"), thr=0.0, scales=(0.95,1.0,1.05))
-        _, scf = CV.match_center_multiscale(roi, CV.read_tpl("fail.png"),    thr=0.0, scales=(0.95,1.0,1.05))
-
-        # OCR
-        ocr_score_succ = ocr_score_fail = 0.0
-        ocr_txt = ""
-        if _HAVE_TESS:
-            thrimg = _binarize(roi)
-            ocr_txt = _ocr_text(thrimg, psm=7)
-            if "สำเร็จ" in ocr_txt: ocr_score_succ = 1.0
-            if "ล้มเหลว" in ocr_txt: ocr_score_fail = 1.0
-
-        # เห็นสัญญาณหรือยัง
-        color_hit = (coolwhite >= (succ_min*0.6)) or (warm >= (fail_min*0.6))
-        mot_hit   = (mot >= mot_thr)
-        if color_hit or mot_hit:
-            seen_signal = True
-
-        # รวมคะแนน
-        tm_s_n = max(0.0, (scs - tm_succ_thr) / max(1e-6, 1.0 - tm_succ_thr))
-        tm_f_n = max(0.0, (scf - tm_fail_thr) / max(1e-6, 1.0 - tm_fail_thr))
-
-        col_s = min(1.0, coolwhite / max(1e-6, succ_min)) if coolwhite >= succ_min else 0.0
-        col_f = min(1.0, warm      / max(1e-6, fail_min)) if warm      >= fail_min  else 0.0
-
-        sc_succ = (w_ocr*ocr_score_succ) + (w_tm*tm_s_n) + (w_color*col_s)
-        sc_fail = (w_ocr*ocr_score_fail) + (w_tm*tm_f_n) + (w_color*col_f)
-        conf = abs(sc_succ - sc_fail)
-
-        cand = None
-        if sc_succ - sc_fail > margin:
-            cand = "success"
-        elif sc_fail - sc_succ > margin:
-            cand = "fail"
-
-        if (cand is not None) and (conf > best["conf"]):
-            best.update(dict(verdict=cand, conf=float(min(1.0, conf)),
-                             ocr=ocr_txt, tm_s=float(scs), tm_f=float(scf),
-                             warm=float(warm), cool=float(cool), white=float(white), motion=float(mot)))
-
-        # ออกจากลูปเมื่อได้ verdict หลัง min_wait หรือถึง max_wait
-        if (best["verdict"] is not None) and (time.time() - t0 >= min_wait):
-            break
-
-    # ไม่มีสัญญาณเลย → ยังไม่ upgrade
-    if best["verdict"] is None and not seen_signal:
-        LOG.i("[overlay smart] no-signal: screen steady / no effect → undecided")
-        return None
-
-    # ยังไม่มี verdict แต่เห็นสัญญาณ → ใช้สีชี้ขาดแบบ fallback
-    if best["verdict"] is None:
-        if best["warm"] > (best["cool"] + best["white"]):
-            best["verdict"], best["conf"] = "fail", 0.4
-        elif (best["cool"] + best["white"]) > best["warm"]:
-            best["verdict"], best["conf"] = "success", 0.4
-
-    # log ไป Web UI
+def _ensure_dir(p: str):
     try:
-        col = "#42a5f5" if best["verdict"] == "success" else ("#ef5350" if best["verdict"] == "fail" else "#6c757d")
-        _log_web(getattr(adb, "dev_id", "?"),
-                 ('overlay: <b style="color:%s">%s</b> '
-                  '(conf=%.2f, warm=%.3f, cool=%.3f, white=%.3f, tmS=%.2f, tmF=%.2f, mot=%.3f, ocr="%s")'
-                  % (col, best["verdict"] or "None", best["conf"], best["warm"], best["cool"], best["white"], best["tm_s"], best["tm_f"], best["motion"], best["ocr"])),
-                 "INFO")
+        os.makedirs(p, exist_ok=True)
     except Exception:
         pass
 
-    if best["verdict"]:
-        LOG.i(f"[overlay fused] {best['verdict']} (conf={best['conf']:.2f}; warm={best['warm']:.3f}, cool={best['cool']:.3f}, white={best['white']:.3f}, tmS={best['tm_s']:.2f}, tmF={best['tm_f']:.2f})")
-    else:
-        LOG.i("[overlay fused] unclear")
+# ---- CONFIG (overlay matcher) ----
+_DIR_SUCCESS = os.path.join(_OVERLAY_DATASET_DIR, "state_success")
+_DIR_FAIL    = os.path.join(_OVERLAY_DATASET_DIR, "state_fail")
+_DIR_UNLBL   = os.path.join(_OVERLAY_DATASET_DIR, "state_unlabeled")
 
-    return best["verdict"]
+_W_PHASH = float(os.getenv("OVERLAY_W_PHASH", "0.45"))
+_W_ORB   = float(os.getenv("OVERLAY_W_ORB",   "0.55"))
+
+_PHASH_MAX_DIST = int(os.getenv("OVERLAY_MATCH_PHASH_MAX_DIST", "16"))
+_ORB_GOOD_RATIO_THR = float(os.getenv("OVERLAY_MATCH_ORB_GOOD_RATIO_THR", "0.12"))
+_ORB_MIN_GOOD       = int(os.getenv("OVERLAY_MATCH_ORB_MIN_GOOD", "18"))
+
+_MATCH_SCORE_THR = float(os.getenv("OVERLAY_MATCH_SCORE_THR", "0.58"))
+
+_SIZE_TOL_RATIO = float(os.getenv("OVERLAY_SIZE_TOL_RATIO", "0.35"))
+
+# Motion-driven snap defaults (can be overridden via ENV)
+_OVERLAY_MIN_WAIT = float(os.getenv("OVERLAY_MIN_WAIT", "0.20"))
+_OVERLAY_MAX_WAIT = float(os.getenv("OVERLAY_MAX_WAIT", "0.80"))
+_OVERLAY_POLL_INT = float(os.getenv("OVERLAY_POLL_INTERVAL", "0.12"))
+
+for _d in (_DIR_SUCCESS, _DIR_FAIL, _DIR_UNLBL):
+    _ensure_dir(_d)
+
+# ---- pHash helpers ----
+def _phash(gray32):
+    g = cv2.resize(gray32, (32, 32), interpolation=cv2.INTER_AREA)
+    g = np.float32(g)
+    dct = cv2.dct(g)
+    dct_low = dct[:8, :8]
+    med = np.median(dct_low)
+    bits = (dct_low > med).astype(np.uint8).flatten()
+    v = 0
+    for b in bits:
+        v = (v << 1) | int(b)
+    return np.uint64(v)
+
+def _phash_dist(a: np.uint64, b: np.uint64):
+    x = int(a ^ b)
+    return bin(x).count("1")
+
+def _phash_sim(dist: int, maxd: int = _PHASH_MAX_DIST):
+    d = float(dist)
+    if d >= maxd:
+        return 0.0
+    return max(0.0, 1.0 - (d / maxd))
+
+# ---- ORB helpers ----
+_ORB = cv2.ORB_create(nfeatures=600, scaleFactor=1.2, nlevels=8, edgeThreshold=15, patchSize=31, fastThreshold=12)
+_BFM = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+
+def _orb_desc(gray):
+    kp = _ORB.detect(gray, None)
+    kp, des = _ORB.compute(gray, kp)
+    return kp or [], des
+
+def _orb_good_ratio(des1, des2):
+    if des1 is None or des2 is None or len(des1) == 0 or len(des2) == 0:
+        return 0.0, 0
+    matches = _BFM.knnMatch(des1, des2, k=2)
+    good = []
+    for m in matches:
+        if len(m) == 2 and m[0].distance < 0.75 * m[1].distance:
+            good.append(m[0])
+    good_n = len(good)
+    all_n = len(matches)
+    ratio = float(good_n) / float(max(1, all_n))
+    return ratio, good_n
+
+# ---- Dataset index (lazy cache + auto refresh by mtime) ----
+class _OverlayIndex:
+    def __init__(self):
+        self.items = []  # list of dict(label,path, w,h, phash, des)
+        self._last_scan = 0.0
+        self._last_mtime = 0.0
+
+    def _dir_latest_mtime(self):
+        mt = 0.0
+        for d in (_DIR_SUCCESS, _DIR_FAIL):
+            for p in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.jpg")) + glob.glob(os.path.join(d, "*.jpeg")):
+                try:
+                    mt = max(mt, os.path.getmtime(p))
+                except Exception:
+                    pass
+        return mt
+
+    def refresh_if_needed(self, force=False):
+        now = time.time()
+        if (not force) and (now - self._last_scan < 5.0):
+            return
+        current_mtime = self._dir_latest_mtime()
+        if (not force) and (current_mtime <= self._last_mtime) and self.items:
+            self._last_scan = now
+            return
+        # rebuild
+        items = []
+        for label, d in (("success", _DIR_SUCCESS), ("fail", _DIR_FAIL)):
+            for p in glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.jpg")) + glob.glob(os.path.join(d, "*.jpeg")):
+                try:
+                    raw = np.fromfile(p, dtype=np.uint8)
+                    img = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
+                    if img is None:
+                        continue
+                    img = _prep_gray_for_match(img)   # <<< normalize
+                    h, w = img.shape[:2]
+                    ph = _phash(img)
+                    _, des = _orb_desc(img)
+                    items.append(dict(label=label, path=p, w=w, h=h, phash=ph, des=des))
+                except Exception:
+                    continue
+        self.items = items
+        self._last_scan = now
+        self._last_mtime = current_mtime
+        LOG.i(f"[overlay-index] indexed samples: {len(self.items)} (success={sum(1 for x in items if x['label']=='success')}, fail={sum(1 for x in items if x['label']=='fail')})")
+
+_OVERLAY_INDEX = _OverlayIndex()
+
+def rebuild_overlay_index():
+    """ เรียกใช้เมื่อต้องการบังคับ reindex ด้วยตนเอง """
+    _OVERLAY_INDEX.refresh_if_needed(force=True)
+
+def _save_overlay_sample(dev_id: str, overlay_rect, roi_bgr, verdict: str, best_dict: dict, tag: str = ""):
+    try:
+        if not _OVERLAY_SNAP:
+            LOG.i("[overlay-snap] disabled by OVERLAY_SNAP=0")
+            return
+
+        label = "state_unlabeled" if verdict not in ("success", "fail") else ("state_success" if verdict == "success" else "state_fail")
+        base_dir = os.path.join(_OVERLAY_DATASET_DIR, label)
+        _ensure_dir(_OVERLAY_DATASET_DIR)
+        _ensure_dir(base_dir)
+
+        ts  = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        dev = _safe_name(dev_id or "dev")  # sanitize เพื่อกัน ?, :, ฯลฯ
+        tgg = _safe_name(tag or "snap")
+        fname = f"{ts}_{dev}_{tgg}_{(verdict or 'none')}"
+        img_path  = os.path.join(base_dir, fname + ".png")
+        meta_path = os.path.join(base_dir, fname + ".json")
+
+        if not _truthy_img(roi_bgr):
+            LOG.w(f"[overlay-snap] skip write: empty ROI (path={img_path})")
+            meta = dict(
+                ts=ts, dev_id=dev_id, verdict=verdict, tag=tag,
+                reason="empty_roi", overlay_rect=(list(map(int, overlay_rect)) if overlay_rect else None),
+                roi_shape=None, match=best_dict or {}
+            )
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+            return
+
+        ok = False
+        try:
+            ok = bool(cv2.imwrite(img_path, roi_bgr))
+        except Exception as e:
+            LOG.w(f"[overlay-snap] imwrite exception: {e}")
+
+        if not ok:
+            try:
+                ok2, buf = cv2.imencode(".png", roi_bgr)
+                if ok2:
+                    buf.tofile(img_path)
+                    ok = True
+            except Exception as e:
+                LOG.w(f"[overlay-snap] imencode/tofile exception: {e}")
+
+        if not ok:
+            LOG.w(f"[overlay-snap] write failed: {img_path}")
+        else:
+            LOG.i(f"[overlay-snap] wrote: {img_path}")
+
+        meta = dict(
+            ts=ts, dev_id=dev_id, verdict=verdict, tag=tag,
+            overlay_rect=(list(map(int, overlay_rect)) if overlay_rect else None),
+            roi_shape=(int(roi_bgr.shape[0]), int(roi_bgr.shape[1])),
+            match=best_dict or {},
+            dataset_dir=_OVERLAY_DATASET_DIR
+        )
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            LOG.w(f"[overlay-snap] write meta error: {e} (meta_path={meta_path})")
+
+    except Exception as e:
+        LOG.w(f"[overlay-snap] unexpected error: {e}")
+
+def _overlay_detect(adb: ADBAdapter, overlay_rect: tuple) -> str | None:
+    """
+    Dataset-only + Motion-driven snap:
+      - เฝ้าดู motion เพื่อจับช่วงแอนิเมชัน success/fail
+      - รอหลังพบ motion ช่วงสั้น ๆ เพื่อให้เฟรมนิ่งขึ้น แล้วค่อยเลือกเฟรมที่คมที่สุดไปเทียบกับ dataset
+      - ถ้าไม่มี motion เลยภายในเวลารวม → snap unlabeled เพื่อรอ label
+    """
+    # ======= Tunables (ENV) =======
+    POLL_INT          = float(os.getenv("OVERLAY_POLL_INTERVAL",       "0.04"))
+    MAX_TOTAL_WAIT    = float(os.getenv("OVERLAY_MAX_TOTAL_WAIT",      "1.80"))
+    ARM_MOTION_THR    = float(os.getenv("OVERLAY_ARM_MOTION_THR",      "0.020"))
+    SETTLE_MOTION_THR = float(os.getenv("OVERLAY_SETTLE_MOTION_THR",   "0.008"))
+    POST_MOTION_WAIT  = float(os.getenv("OVERLAY_POST_MOTION_WAIT",    "0.28"))
+    NO_MOTION_EXTRA   = float(os.getenv("OVERLAY_NO_MOTION_EXTRA",     "0.35"))
+
+    # ======= Capture loop =======
+    t0 = time.time()
+    prev_gray = None
+    armed_ts = None
+    best_roi = None
+    best_focus = -1.0
+    last_roi = None
+
+    def _grab_roi():
+        img = _grab(adb)
+        roi_bgr, _ = _crop_rect(img, overlay_rect)
+        return roi_bgr
+
+    def _motion(prev_g, cur_bgr):
+        g = cv2.cvtColor(cur_bgr, cv2.COLOR_BGR2GRAY)
+        if prev_g is None:
+            return g, 0.0
+        diff = cv2.absdiff(g, prev_g)
+        return g, float(np.mean(diff)) / 255.0
+
+    def _focus_score(gray):
+        return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+    while time.time() - t0 < MAX_TOTAL_WAIT:
+        time.sleep(POLL_INT)
+        roi = _grab_roi()
+        if _truthy_img(roi):
+            last_roi = roi
+        else:
+            continue
+
+        prev_gray, mot = _motion(prev_gray, roi)
+        g = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        foc = _focus_score(g)
+
+        if armed_ts is None:
+            if mot >= ARM_MOTION_THR:
+                armed_ts = time.time()
+                best_roi, best_focus = roi, foc
+                LOG.i(f"[overlay/anim] armed: mot={mot:.3f}")
+        else:
+            if foc > best_focus:
+                best_roi, best_focus = roi, foc
+            if (time.time() - armed_ts) >= POST_MOTION_WAIT and mot <= SETTLE_MOTION_THR:
+                break
+
+    snap_roi = best_roi if _truthy_img(best_roi) else last_roi
+    if not _truthy_img(snap_roi):
+        LOG.w("[overlay] ROI empty → cannot snap")
+        return None
+
+    # ======= Dataset matching =======
+    roi_gray = _prep_gray_for_match(snap_roi)
+    h, w = roi_gray.shape[:2]
+    ph_roi = _phash(roi_gray)
+    _, des_roi = _orb_desc(roi_gray)
+
+    _OVERLAY_INDEX.refresh_if_needed()
+
+    if not _OVERLAY_INDEX.items:
+        LOG.w("[overlay] dataset empty → snap as unlabeled")
+        _save_overlay_sample(getattr(adb, "dev_id", "?"), overlay_rect, snap_roi,
+                             None, dict(reason="dataset_empty", armed=bool(armed_ts)), tag="need_label")
+        return None
+
+    best = dict(score=0.0, label=None, phash_sim=0.0, orb_ratio=0.0, orb_good=0, ref_path=None, ref_w=0, ref_h=0)
+    for it in _OVERLAY_INDEX.items:
+        size_penalty = 0.0
+        if max(abs(it["w"] - w)/max(1,w), abs(it["h"] - h)/max(1,h)) > _SIZE_TOL_RATIO:
+            size_penalty = 0.08
+
+        dist = _phash_dist(ph_roi, it["phash"])
+        sim_p = _phash_sim(dist, _PHASH_MAX_DIST)
+        r_orb, n_good = _orb_good_ratio(des_roi, it["des"])
+        orb_ok = (r_orb >= _ORB_GOOD_RATIO_THR) and (n_good >= _ORB_MIN_GOOD)
+
+        score = (_W_PHASH * sim_p) + (_W_ORB * (r_orb if orb_ok else 0.0))
+        score = max(0.0, score - size_penalty)
+
+        if score > best["score"]:
+            best.update(score=float(score), label=it["label"], phash_sim=float(sim_p),
+                        orb_ratio=float(r_orb), orb_good=int(n_good),
+                        ref_path=it["path"], ref_w=int(it["w"]), ref_h=int(it["h"]))
+
+    LOG.i(f"[overlay/dataset] best={best['label']} score={best['score']:.3f} (pH={best['phash_sim']:.3f}, orb={best['orb_ratio']:.3f}/{best['orb_good']}) ref={best['ref_path']} armed={bool(armed_ts)}")
+
+    if best["score"] >= _MATCH_SCORE_THR and best["label"] in ("success", "fail"):
+        _save_overlay_sample(getattr(adb, "dev_id", "?"), overlay_rect, snap_roi,
+                             "success" if best["label"] == "success" else "fail",
+                             dict(best=best, armed=bool(armed_ts)), tag="anim_peak")
+        return "success" if best["label"] == "success" else "fail"
+
+    # ยังไม่มั่นใจ → เก็บ unlabeled; ถ้ายังไม่เคย arm ให้ยืดรออีกนิด
+    if armed_ts is None and (time.time() - t0) < (MAX_TOTAL_WAIT + NO_MOTION_EXTRA):
+        end = time.time() + NO_MOTION_EXTRA
+        while time.time() < end:
+            time.sleep(POLL_INT)
+            nxt = _grab_roi()
+            if _truthy_img(nxt):
+                snap_roi = nxt
+
+    _save_overlay_sample(getattr(adb, "dev_id", "?"), overlay_rect, snap_roi,
+                         None, dict(best=best, armed=bool(armed_ts)), tag="need_label")
+    return None
 
 # ===================== Device context & logging =====================
 def _ctx(dev_id: str) -> dict:
@@ -564,11 +738,9 @@ def _read_level_from_icon_topright(
     """
     อ่านระดับไอเทมจากมุมขวาบนของไอคอนในช่อง
     ลำดับ:
-      PASS 0 : dataset classifier (centroid cosine)  **เพิ่มใหม่**
+      PASS 0 : dataset classifier (centroid cosine)
       PASS A1: dataset bank บน yellow-mask
-      PASS A : yellow-mask + single template TM
       PASS B1: dataset bank บน gray ROI
-      PASS B : RGB template
       PASS C : OCR (+0123456789)
     """
     cx, cy = item_center
@@ -584,16 +756,16 @@ def _read_level_from_icon_topright(
     roi = crop[ry0:ry0+rh, rx0:rx0+rw].copy()
     tag = f"{debug_tag}_roi"
 
-    # เตรียมโดเมนต่าง ๆ
-    ymask = _yellow_digit_mask(roi)          # mask (0/255)
-    ymask_norm = _norm_roi_size(ymask)       # normalize
+    ymask = _yellow_digit_mask(roi)
+    ymask_norm = _norm_roi_size(ymask)
     roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     roi_gray_norm = _norm_roi_size(roi_gray)
 
     if force:
         _save_plus_dataset(roi, level=None, method="cls", debug_tag=tag) #force save
         return None
-    # ---------- PASS 0: dataset classifier (centroid cosine) ----------
+
+    # ---------- PASS 0: dataset classifier ----------
     cls_thr = float(os.getenv("CONF_PLUS_CLS_THR", "0.88"))
     lvl_c, sc_c = _predict_level_by_classifier(roi_gray_norm)
     if lvl_c is not None and sc_c >= cls_thr:
@@ -616,29 +788,6 @@ def _read_level_from_icon_topright(
                 _save_plus_dataset(roi, level=lvl_bm, method="bank_mask", debug_tag=tag)
             return lvl_bm
 
-    # ---------- PASS A: yellow-mask + single-template TM ----------
-    # best_lvl, best_sc = None, -1.0
-    # tm_mask_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.78"))
-    # for n in range(1, 10):
-    #     tpl = CV.read_tpl(f"plus{n}.png")
-    #     if tpl is None:
-    #         continue
-    #     if tpl.ndim == 3:
-    #         tpl = cv2.cvtColor(tpl, cv2.COLOR_BGR2GRAY)
-    #     _, tpl_bin = cv2.threshold(tpl, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    #     res = cv2.matchTemplate(ymask, tpl_bin, cv2.TM_CCOEFF_NORMED)
-    #     _, sc, _, _ = cv2.minMaxLoc(res)
-    #     if sc > best_sc:
-    #         best_sc = sc
-    #         best_lvl = n
-    # if best_lvl is not None and best_sc >= tm_mask_thr:
-    #     LOG.i(f"[ICON-PLUS MASK] level=+{best_lvl} score={best_sc:.3f} (thr={tm_mask_thr})")
-    #     if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
-    #         _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "mask_tm", tag)
-    #     if 1 <= best_lvl <= 6:
-    #         _save_plus_dataset(roi, level=best_lvl, method="mask_tm", debug_tag=tag)
-    #     return best_lvl
-
     # ---------- PASS B1: dataset bank on gray ROI ----------
     if _PLUS_TPL_BANK:
         lvl_bg, sc_bg = _best_level_by_bank_on_gray(roi_gray_norm)
@@ -650,27 +799,6 @@ def _read_level_from_icon_topright(
             if 1 <= lvl_bg <= 6:
                 _save_plus_dataset(roi, level=lvl_bg, method="bank_gray", debug_tag=tag)
             return lvl_bg
-
-    # ---------- PASS B: RGB template matching (สำรอง) ----------
-    # best_lvl, best_sc = None, -1.0
-    # tm_rgb_thr = float(os.getenv("CONF_PLUS_TM_THR", "0.82"))
-    # for n in range(1, 10):
-    #     tpl = CV.read_tpl(f"plus{n}.png")
-    #     if tpl is None:
-    #         continue
-    #     pt, sc = CV.match_center_multiscale(
-    #         roi, tpl, thr=tm_rgb_thr, scales=(0.90, 0.95, 1.00, 1.05, 1.10)
-    #     )
-    #     if pt and sc > best_sc:
-    #         best_sc = sc
-    #         best_lvl = n
-    # if best_lvl is not None and best_sc >= tm_rgb_thr:
-    #     LOG.i(f"[ICON-PLUS TM] level=+{best_lvl} score={best_sc:.3f} (thr={tm_rgb_thr})")
-    #     if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
-    #         _save_item_lv_snap(crop, roi, None, x0, y0, x0+rx0, y0+ry0, rw, rh, best_lvl, "rgb_tm", tag)
-    #     if 1 <= best_lvl <= 6:
-    #         _save_plus_dataset(roi, level=best_lvl, method="rgb_tm", debug_tag=tag)
-    #     return best_lvl
 
     # ---------- PASS C: OCR (+0123456789) ----------
     if _HAVE_TESS:
@@ -698,7 +826,7 @@ def _read_level_from_icon_topright(
     LOG.i("[ICON-PLUS] ไม่พบระดับ (cls/bank/mask/rgb/OCR ไม่ผ่าน)")
     if os.getenv("SAVE_ITEM_LV_SNAP", "1") != "0":
         _save_item_lv_snap(crop, roi, ymask, x0, y0, x0+rx0, y0+ry0, rw, rh, -1, "miss", tag)
-    _save_plus_dataset(roi, level=None, method="miss", debug_tag=tag)  # เก็บไว้ให้คุณ label เอง
+    _save_plus_dataset(roi, level=None, method="miss", debug_tag=tag)
     return None
 
 # ===================== Main step =====================
@@ -762,24 +890,18 @@ def worker_step(controller) -> Dict[str, Any]:
         c["last_action_ts"] = time.time()
         return {}
 
-    # ---------- Stage: inspect (tap → insert → read level + snapshot ROI) ----------
+    # ---------- Stage: inspect ----------
     if c["stage"] == "inspect":
         remain = 0.20 - (time.time() - c["last_action_ts"])
         if remain > 0:
-            # time.sleep(min(0.05, remain))
             return {}
 
         idx = c["item_idx"] % len(items)
 
-        # ให้ภาพนิ่งเล็กน้อยหลัง insert (ปรับได้ด้วย POST_INSERT_SETTLE)
-        # time.sleep(float(os.getenv("POST_INSERT_SETTLE", "0.35")))
-
-        # กำหนดพิกัด/ขนาด ROI ไอคอน
         fx = int(os.getenv("ICON_FIX_CX", "960"))
         fy = int(os.getenv("ICON_FIX_CY", "323"))
         icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
 
-        # อ่านเลเวลจากมุมขวาบน (เกมโชว์ next-level → ชดเชย ICON_LVL_OFFSET)
         ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))
         lvl_raw = _read_level_from_icon_topright(
             adb, (fx, fy),
@@ -791,7 +913,6 @@ def worker_step(controller) -> Dict[str, Any]:
         else:
             lvl = max(0, int(lvl_raw) + ICON_LVL_OFFSET)
 
-        # เก็บเลเวลฐาน และ snapshot ROI ไว้เทียบในขั้น upgrade
         c["base_level"] = int(lvl)
         try:
             c["icon_roi_prev"] = _icon_roi_norm(adb, (fx, fy), icon_box)
@@ -802,13 +923,12 @@ def worker_step(controller) -> Dict[str, Any]:
         LOG.i(f"[{dev_id}] หลัง INSERT อ่านระดับ (base) level={lvl}")
         _log_web(dev_id, f'หลัง INSERT อ่านระดับ (base) = {_lv_html(lvl, target)}')
 
-        # เข้าสู่สเตจ 'upgrade'
         c["stage"] = "upgrade"
         c["successes"] = 0
         c["last_action_ts"] = time.time()
         return {}
 
-    # ---------- Stage: insert (CV insert then wait 0.3s) ----------
+    # ---------- Stage: insert ----------
     if c["stage"] == "insert":
         idx = c["item_idx"] % len(items)
         ix, iy = items[idx]
@@ -821,7 +941,6 @@ def worker_step(controller) -> Dict[str, Any]:
             sx, sy = _pt("slot_center", (0, 0))
             LOG.w(f"[{dev_id}] INSERT: CV not found → fallback slot_center @({sx},{sy})")
             _log_web(dev_id, f'INSERT: CV not found → fallback slot_center @({sx},{sy})', "WARN")
-            # adb.tap(sx, sy)   # เผื่อจำเป็น
 
         LOG.i(f"[{dev_id}] INSERT: done → รอ 0.3s")
         _log_web(dev_id, 'INSERT: done → รอ 0.3s')
@@ -831,151 +950,207 @@ def worker_step(controller) -> Dict[str, Any]:
         c["last_action_ts"] = time.time()
         return {}
 
-    # ---------- Stage: upgrade (loop tap -> overlay detect -> count successes) ----------
+    # Ensure defaults for per-item state
+    c.setdefault("inflight", False)
+    c.setdefault("inflight_ts", None)
+    c.setdefault("unclear_n", 0)
+    c.setdefault("last_action_ts", 0.0)
 
-    ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))            # UI บางเกมโชว์ next-level → ชดเชย -1
-    ICON_SUCCESS_CLAMP_INC = int(os.getenv("ICON_SUCCESS_CLAMP_INC", "1"))  # จำกัดจำนวนขั้นที่เพิ่มจาก icon (1=เพิ่มครั้งละ 1)
+    # ---- Tunables (env overridable) ----
+    _POST_UPGRADE_WAIT = float(os.getenv("POST_UPGRADE_WAIT", "0.18"))
+    OVERLAY_QUICK_POLL_BUDGET = float(os.getenv("OVERLAY_QUICK_POLL_BUDGET", "0.45"))
+    OVERLAY_QUICK_POLL_STEP = float(os.getenv("OVERLAY_QUICK_POLL_STEP", "0.12"))
+    POLL_MAX = float(os.getenv("CONF_OVERLAY_POLL_MAX", "0.60"))
+    UNCLEAR_GRACE = int(os.getenv("CONF_OVERLAY_UNCLEAR_GRACE", "2"))
+    MIN_TAP_INTERVAL = float(os.getenv("MIN_TAP_INTERVAL", "0.05"))
+
+    ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))
+    ICON_SUCCESS_CLAMP_INC = int(os.getenv("ICON_SUCCESS_CLAMP_INC", "1"))
     fx = int(os.getenv("ICON_FIX_CX", "960"))
     fy = int(os.getenv("ICON_FIX_CY", "323"))
     icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
 
-    # ---------- Stage: upgrade (ICON-ONLY; compare snapshot to decide) ----------
     if c["stage"] == "upgrade":
-        # ensure defaults
-        c.setdefault("last_action_ts", 0.0)
-
-        # tunables
-        _POST_UPGRADE_WAIT = float(os.getenv("POST_UPGRADE_WAIT", "0.40"))
-        MIN_TAP_INTERVAL   = float(os.getenv("MIN_TAP_INTERVAL",   "0.05"))
-
-        # icon config
-        fx = int(os.getenv("ICON_FIX_CX", "960"))
-        fy = int(os.getenv("ICON_FIX_CY", "323"))
-        icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
-        ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))
-        ICON_SUCCESS_CLAMP_INC = int(os.getenv("ICON_SUCCESS_CLAMP_INC", "1"))
-
-        # metric สำหรับเทียบรูป (0..255) แล้ว normalize เป็น 0..1
-        ICON_SAME_THR = float(os.getenv("ICON_SAME_THR", "0.020"))  # 0.02 = ต่างน้อยกว่า ~2% ⇒ ถือว่า "เหมือนเดิม"
-
         base = c.get("base_level", 0) or 0
-        cur  = base + c.get("successes", 0)
-
-        LOG.i(f"[{dev_id}] UPGRADE base={base} succ={c.get('successes',0)} cur={cur} / target=+{target}")
+        cur = base + c.get("successes", 0)
+        LOG.i(f"[{dev_id}] UPGRADE base={base} succ={c['successes']} cur={cur} / target=+{target}")
         _log_web(dev_id, f'UPGRADE: curr={_lv_html(cur, target)} / target={target}')
 
-        # stop ก่อนคลิก
+        # -------- Stop conditions (ก่อนคลิก) --------
         if cur >= target:
-            LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป")
+            LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → นับชิ้นสำเร็จ 1 ชิ้น และไปชิ้นถัดไป")
             _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(cur, target)} / target={target} ✅')
             _next_item(dev_id, adb, items, swipe_cfg, c)
+            c["inflight"] = False
+            c["inflight_ts"] = None
+            c["unclear_n"] = 0
             return {"done_item": True}
 
-        # slot หาย → ข้ามชิ้น
+        # -------- Pre-check: slot ยังอยู่ไหม --------
         if _is_slot_empty(adb, _pt("slot_center", (0, 0)), _size2("slot_roi", (80, 80))):
             LOG.i(f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
             _log_web(dev_id, 'ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้', "WARN")
             _next_item(dev_id, adb, items, swipe_cfg, c)
+            c["inflight"] = False
+            c["inflight_ts"] = None
+            c["unclear_n"] = 0
             return {"break_at_level": cur}
 
-        # debounce ก่อนแตะ
-        remain = MIN_TAP_INTERVAL - (time.time() - c.get("last_action_ts", 0.0))
+        overlay_abs = _rect("overlay_abs", (0, 0, 0, 0))
+
+        # -------- helpers --------
+        def _apply_success() -> dict:
+            c["successes"] = c.get("successes", 0) + 1
+            new_cur = (c.get("base_level", 0) or 0) + c["successes"]
+            nonlocal out
+            out["success_clicks"] = out.get("success_clicks", 0) + 1
+            LOG.i(f"[{dev_id}] ผล: สำเร็จ (+1) → success={c['successes']}")
+            _log_web(dev_id, f'ผล: <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
+            if new_cur >= target:
+                LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
+                _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
+                _next_item(dev_id, adb, items, swipe_cfg, c)
+                c["inflight"] = False
+                c["inflight_ts"] = None
+                c["unclear_n"] = 0
+                out["done_item"] = True
+            return out
+
+        def _apply_verdict(v: str) -> dict:
+            if v == "success":
+                return _apply_success()
+            LOG.i(f"[{dev_id}] ผล: ล้มเหลว → พยายามต่อจนถึง target={target}")
+            _log_web(dev_id, f'ผล: <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(cur, target)} / target={target}', "WARN")
+            return out
+
+        def _icon_fallback_maybe_success(debug_label: str) -> bool:
+            try:
+                idx = c.get("item_idx", 0) % max(1, len(items))
+                raw_lvl = _read_level_from_icon_topright(
+                    adb, (fx, fy),
+                    box_size=icon_box,
+                    debug_tag=f"{debug_label}_{dev_id}_idx{idx}"
+                )
+                if raw_lvl is None:
+                    return False
+                read_lvl = max(0, int(raw_lvl) + ICON_LVL_OFFSET)
+                current = (c.get("base_level", 0) or 0) + c.get("successes", 0)
+                if read_lvl > current:
+                    inc = read_lvl - current
+                    gain = inc if ICON_SUCCESS_CLAMP_INC <= 0 else min(inc, ICON_SUCCESS_CLAMP_INC)
+                    c["successes"] = c.get("successes", 0) + gain
+                    new_cur2 = (c.get("base_level", 0) or 0) + c["successes"]
+                    nonlocal out
+                    out["success_clicks"] = out.get("success_clicks", 0) + 1
+                    LOG.i(f"[{dev_id}] (icon-fallback) success → raw={raw_lvl} off={ICON_LVL_OFFSET} read={read_lvl} gain=+{gain}")
+                    _log_web(dev_id, f'(icon) <b>สำเร็จ</b> → curr={_lv_html(new_cur2, target)} / target={target}')
+                    c["inflight"] = False
+                    c["inflight_ts"] = None
+                    c["unclear_n"] = 0
+                    if new_cur2 >= target:
+                        LOG.i(f"[{dev_id}] (icon-fallback) บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
+                        _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur2, target)} / target={target} ✅')
+                        _next_item(dev_id, adb, items, swipe_cfg, c)
+                        out["done_item"] = True
+                    return True
+                else:
+                    LOG.i(f"[{dev_id}] (icon-fallback) read_lvl={read_lvl} ≤ cur={current} → ยังไม่ฟันธง")
+                    return False
+            except Exception as e:
+                LOG.w(f"[{dev_id}] icon-fallback error: {e}")
+                return False
+
+        # -------- inflight branch --------
+        if c.get("inflight"):
+            verdict = _overlay_detect(adb, overlay_abs)
+            if verdict in ("success", "fail"):
+                c["inflight"] = False
+                c["inflight_ts"] = None
+                c["unclear_n"] = 0
+                return _apply_verdict(verdict)
+
+            # Quick poll within budget
+            budget_t0 = time.time()
+            got = None
+            while (time.time() - budget_t0) < OVERLAY_QUICK_POLL_BUDGET:
+                time.sleep(OVERLAY_QUICK_POLL_STEP)
+                chk = _overlay_detect(adb, overlay_abs)
+                if chk in ("success", "fail"):
+                    got = chk
+                    break
+            if got in ("success", "fail"):
+                c["inflight"] = False
+                c["inflight_ts"] = None
+                c["unclear_n"] = 0
+                return _apply_verdict(got)
+
+            # Try icon fallback quickly
+            if _icon_fallback_maybe_success("inflight"):
+                return out
+
+            # Timeout / grace — allow re-tap soon
+            c["unclear_n"] = c.get("unclear_n", 0) + 1
+            waited = time.time() - (c.get("inflight_ts") or c.get("last_action_ts", time.time()))
+            LOG.i(f"[{dev_id}] overlay ยังไม่ชัดเจน (inflight) → unclear_n={c['unclear_n']} waited={waited:.2f}s")
+            _log_web(dev_id, f'overlay ยังไม่ชัดเจน (inflight) → n={c["unclear_n"]} t={waited:.1f}s', "WARN")
+            if waited >= POLL_MAX or c["unclear_n"] >= UNCLEAR_GRACE:
+                c["inflight"] = False
+                c["inflight_ts"] = None
+                c["unclear_n"] = 0
+                LOG.w(f"[{dev_id}] overlay ไม่ชัดนานเกิน → เคลียร์ inflight เพื่อรี-tap")
+                _log_web(dev_id, 'overlay ไม่ชัดนานเกิน → จะลองคลิกใหม่ในรอบถัดไป', "WARN")
+            return out
+
+        # -------- ไม่มี inflight → คลิกใหม่ได้ --------
+        last = c.get("last_action_ts", 0.0)
+        remain = MIN_TAP_INTERVAL - (time.time() - last)
         if remain > 0:
             time.sleep(min(0.05, remain))
         c["last_action_ts"] = time.time()
 
-        # แตะปุ่มอัปเกรด
         ux, uy = _pt("upgrade_btn", (0, 0))
         LOG.i(f"[{dev_id}] UPGRADE: click upgrade_btn @({ux},{uy})")
         _log_web(dev_id, f'UPGRADE: click upgrade_btn @({ux},{uy})')
         adb.tap(ux, uy)
         out["upgrade_clicks"] = out.get("upgrade_clicks", 0) + 1
 
-        # รอสั้น ๆ ให้ภาพนิ่ง
+        # Set inflight for this click
+        c["inflight"] = True
+        c["inflight_ts"] = time.time()
+        c["unclear_n"] = 0
+
         time.sleep(_POST_UPGRADE_WAIT)
 
-        # ถ้าชิ้นแตก/หายหลังแตะ → ไปชิ้นถัดไปทันที
-        if _is_slot_empty(adb, _pt("slot_center", (0, 0)), _size2("slot_roi", (80, 80))):
-            LOG.i(f"[{dev_id}] หลังแตะแล้วช่องว่าง → ชิ้นแตก/ถูกใช้ → ข้าม")
-            _log_web(dev_id, 'หลังแตะแล้วช่องว่าง → ข้ามชิ้นนี้', "WARN")
-            _next_item(dev_id, adb, items, swipe_cfg, c)
-            return {"break_after_tap": True}
+        # Quick verdict
+        verdict = _overlay_detect(adb, overlay_abs)
+        if verdict in ("success", "fail"):
+            c["inflight"] = False
+            c["inflight_ts"] = None
+            c["unclear_n"] = 0
+            return _apply_verdict(verdict)
 
-        # อ่านเลเวล + snapshot ปัจจุบัน เพื่อนำมาเทียบกับ snapshot ก่อนหน้า
-        try:
-            roi_prev = c.get("icon_roi_prev", None)
-        except Exception:
-            roi_prev = None
+        # Quick poll within budget
+        budget_t0 = time.time()
+        got = None
+        while (time.time() - budget_t0) < OVERLAY_QUICK_POLL_BUDGET:
+            time.sleep(OVERLAY_QUICK_POLL_STEP)
+            chk = _overlay_detect(adb, overlay_abs)
+            if chk in ("success", "fail"):
+                got = chk
+                break
+        if got in ("success", "fail"):
+            c["inflight"] = False
+            c["inflight_ts"] = None
+            c["unclear_n"] = 0
+            return _apply_verdict(got)
 
-        lvl_after_raw = _read_level_from_icon_topright(
-            adb, (fx, fy),
-            box_size=icon_box,
-            debug_tag=f"{dev_id}_after_idx{c['item_idx']%max(1,len(items))}"
-        )
-        if lvl_after_raw is None:
-            lvl_after = max(0, 0 + ICON_LVL_OFFSET)
-        else:
-            lvl_after = max(0, int(lvl_after_raw) + ICON_LVL_OFFSET)
+        # Icon fallback after quick poll
+        if _icon_fallback_maybe_success("posttap"):
+            return out
 
-        roi_after = None
-        diff_norm = 1.0
-        try:
-            roi_after = _icon_roi_norm(adb, (fx, fy), icon_box)
-            if roi_prev is not None and roi_after is not None and roi_prev.shape == roi_after.shape:
-                # mean absolute error normalized (0..1)
-                diff_norm = float(np.mean(np.abs(roi_after.astype(np.float32) - roi_prev.astype(np.float32))) / 255.0)
-        except Exception as e:
-            LOG.w(f"[{dev_id}] snapshot ROI(after) fail: {e}")
-
-        # ตัดสินใจ: รูปเหมือนเดิม = ล้มเหลว, รูปต่าง = สำเร็จ
-        if roi_prev is not None and roi_after is not None:
-            if diff_norm <= ICON_SAME_THR:
-                # FAIL
-                LOG.i(f"[{dev_id}] ผล: ล้มเหลว (roi same; diff={diff_norm:.3f} ≤ {ICON_SAME_THR:.3f})")
-                _log_web(dev_id, f'ผล: <b style="color:#e53935">ล้มเหลว</b> (img diff={diff_norm:.3f}) → curr={_lv_html(cur, target)}', "WARN")
-                # อัปเดต snapshot ไว้เทียบครั้งถัดไป (เผื่อมีสิ่งเล็ก ๆ เปลี่ยน)
-                c["icon_roi_prev"] = roi_after
-                return out
-            else:
-                # SUCCESS → นับจากระดับจริงหลังอัปเกรด (กัน overshoot)
-                real_gain = max(1, lvl_after - base - c.get("successes", 0))
-                if ICON_SUCCESS_CLAMP_INC > 0:
-                    real_gain = min(real_gain, ICON_SUCCESS_CLAMP_INC)
-                c["successes"] = c.get("successes", 0) + real_gain
-                new_cur = base + c["successes"]
-                out["success_clicks"] = out.get("success_clicks", 0) + 1
-                LOG.i(f"[{dev_id}] ผล: สำเร็จ (+{real_gain}) (img diff={diff_norm:.3f}) → success={c['successes']}, lvl_after={lvl_after}")
-                _log_web(dev_id, f'ผล: <b>สำเร็จ</b> (+{real_gain}) → curr={_lv_html(new_cur, target)} / target={target}')
-                c["icon_roi_prev"] = roi_after
-                if new_cur >= target:
-                    LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
-                    _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
-                    _next_item(dev_id, adb, items, swipe_cfg, c)
-                    out["done_item"] = True
-                return out
-        else:
-            # ไม่มี snapshot เทียบ → fallback โดยเทียบเลเวลอย่างเดียว
-            if lvl_after > cur:
-                inc = lvl_after - cur
-                gain = inc if ICON_SUCCESS_CLAMP_INC <= 0 else min(inc, ICON_SUCCESS_CLAMP_INC)
-                c["successes"] = c.get("successes", 0) + gain
-                new_cur = base + c["successes"]
-                out["success_clicks"] = out.get("success_clicks", 0) + 1
-                LOG.i(f"[{dev_id}] ผล: สำเร็จ (+{gain}) (fallback by level only) → success={c['successes']}")
-                _log_web(dev_id, f'(fallback) <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
-                c["icon_roi_prev"] = roi_after
-                if new_cur >= target:
-                    LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
-                    _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
-                    _next_item(dev_id, adb, items, swipe_cfg, c)
-                    out["done_item"] = True
-                return out
-            else:
-                LOG.i(f"[{dev_id}] ผล: ล้มเหลว (no snapshot; lvl_after={lvl_after} ≤ cur={cur})")
-                _log_web(dev_id, f'(fallback) <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(cur, target)}', "WARN")
-                c["icon_roi_prev"] = roi_after
-                return out
-
+        LOG.i(f"[{dev_id}] overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป (inflight=True)")
+        _log_web(dev_id, 'overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป', "WARN")
+        return out
 
 # ===================== Loop wrapper =====================
 def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
