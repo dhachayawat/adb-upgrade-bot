@@ -60,7 +60,7 @@ services:
       # ── ปุ่มใส่ลง (ฐานชิ้นที่ 1) + หน่วงก่อนกด ──
       INSERT_BASE_X: "582"
       INSERT_BASE_Y: "610"
-      PRE_INSERT_DELAY: "0.5"
+      PRE_INSERT_DELAY: "0.15"
       POST_UPGRADE_WAIT_SEC: "0.5"
 
       # ── ปุ่มอัปเกรด ──

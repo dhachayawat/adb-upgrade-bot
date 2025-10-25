@@ -61,9 +61,7 @@ def _swipe():
 
 # thresholds / timings (fallback to env vars if provided)
 _CONF_INSERT_THR = float(_CFG.get("conf_insert_thr", os.getenv("CONF_INSERT_THR", "0.86")))
-_POST_UPGRADE_WAIT = float(os.getenv("POST_UPGRADE_WAIT_SEC", "0.7"))
 _MAX_ITEM_TIME_SEC = int(os.getenv("MAX_ITEM_TIME_SEC", "30"))
-_BREAK_LEVEL_MIN   = int(_CFG.get("break_level_min", 4))
 
 # ===================== Web UI log helpers =====================
 def _lv_color(lv: Optional[int], target: int) -> str:
@@ -129,7 +127,7 @@ def _ocr_text(gray: np.ndarray, psm: int = 7) -> str:
 def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, int], wait_pre: Optional[float] = None) -> bool:
     if wait_pre is None:
         wait_pre = float(os.getenv("PRE_INSERT_DELAY", "0.8"))
-    time.sleep(wait_pre)
+    # time.sleep(wait_pre)
     img = _grab(adb)
     x1, y1, w, h = insert_roi_rect
     if w > 0 and h > 0:
@@ -151,6 +149,25 @@ def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, 
     _log_web(adb.serial if hasattr(adb, "serial") else "dev", f'INSERT: click @({gx},{gy})')
     adb.tap(gx, gy)
     return True
+
+def _icon_roi_norm(adb, center_xy, box_size: int = 68) -> np.ndarray:
+    """คืนภาพ ROI (gray) ของมุมขวาบนไอคอนแบบ normalize 32x28 เพื่อนำไปเปรียบเทียบ"""
+    import cv2, numpy as np
+    (cx, cy) = center_xy
+    img = _grab(adb)
+    crop, (x0, y0) = _crop_center(img, cx, cy, box_size, box_size)
+
+    h, w = crop.shape[:2]
+    rx0 = int(w * float(os.getenv("ICON_ROI_XRATIO", "0.55")))
+    ry0 = 0
+    rw  = w - rx0
+    rh  = int(h * float(os.getenv("ICON_ROI_HRATIO", "0.50")))
+    roi = crop[ry0:ry0+rh, rx0:rx0+rw].copy()
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    norm = cv2.resize(gray, (32, 28), interpolation=cv2.INTER_AREA)
+    return norm
+
 
 # ======== Snapshot for icon-level reading ========
 def _save_item_lv_snap(crop, roi, thr, x0, y0, x1, y1, w, h, level, method, debug_tag: str):
@@ -745,38 +762,45 @@ def worker_step(controller) -> Dict[str, Any]:
         c["last_action_ts"] = time.time()
         return {}
 
-    # ---------- Stage: inspect (tap → insert → read level at fixed point) ----------
+    # ---------- Stage: inspect (tap → insert → read level + snapshot ROI) ----------
     if c["stage"] == "inspect":
         remain = 0.20 - (time.time() - c["last_action_ts"])
         if remain > 0:
-            time.sleep(min(0.05, remain))
+            # time.sleep(min(0.05, remain))
             return {}
 
-        # ไอเทมปัจจุบัน
         idx = c["item_idx"] % len(items)
 
-        # ให้ภาพนิ่งเล็กน้อย (ปรับได้ด้วย POST_INSERT_SETTLE, ดีฟอลต์ 0.35s)
-        time.sleep(float(os.getenv("POST_INSERT_SETTLE", "0.35")))
+        # ให้ภาพนิ่งเล็กน้อยหลัง insert (ปรับได้ด้วย POST_INSERT_SETTLE)
+        # time.sleep(float(os.getenv("POST_INSERT_SETTLE", "0.35")))
 
-        # อ่านระดับจาก "มุมขวาบนของช่อง" ที่พิกัดตายตัว (ค่าเริ่ม 960,323)
+        # กำหนดพิกัด/ขนาด ROI ไอคอน
         fx = int(os.getenv("ICON_FIX_CX", "960"))
         fy = int(os.getenv("ICON_FIX_CY", "323"))
-        lvl = _read_level_from_icon_topright(
-            adb,
-            (fx, fy),
-            box_size=int(os.getenv("ICON_BOX_SIZE", "68")),
+        icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
+
+        # อ่านเลเวลจากมุมขวาบน (เกมโชว์ next-level → ชดเชย ICON_LVL_OFFSET)
+        ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))
+        lvl_raw = _read_level_from_icon_topright(
+            adb, (fx, fy),
+            box_size=icon_box,
             debug_tag=f"{dev_id}_idx{idx}"
         )
-        # next-level view → ต้อง -1; ถ้า None ให้เป็น 0
-        if lvl is None:
+        if lvl_raw is None:
             lvl = 0
         else:
-            lvl = max(0, int(lvl) - 1)
+            lvl = max(0, int(lvl_raw) + ICON_LVL_OFFSET)
 
-        c["base_level"] = lvl if isinstance(lvl, int) else None
+        # เก็บเลเวลฐาน และ snapshot ROI ไว้เทียบในขั้น upgrade
+        c["base_level"] = int(lvl)
+        try:
+            c["icon_roi_prev"] = _icon_roi_norm(adb, (fx, fy), icon_box)
+        except Exception as e:
+            c["icon_roi_prev"] = None
+            LOG.w(f"[{dev_id}] snapshot ROI fail: {e}")
 
-        LOG.i(f"[{dev_id}] หลัง INSERT อ่านระดับ level={lvl}")
-        _log_web(dev_id, f'หลัง INSERT อ่านระดับ = {_lv_html(lvl, target)}')
+        LOG.i(f"[{dev_id}] หลัง INSERT อ่านระดับ (base) level={lvl}")
+        _log_web(dev_id, f'หลัง INSERT อ่านระดับ (base) = {_lv_html(lvl, target)}')
 
         # เข้าสู่สเตจ 'upgrade'
         c["stage"] = "upgrade"
@@ -808,223 +832,150 @@ def worker_step(controller) -> Dict[str, Any]:
         return {}
 
     # ---------- Stage: upgrade (loop tap -> overlay detect -> count successes) ----------
-    # ensure defaults for flags
-    c.setdefault("inflight", False)
-    c.setdefault("inflight_ts", None)
-    c.setdefault("unclear_n", 0)
 
-    # tunables
-    POLL_MAX = float(os.getenv("CONF_OVERLAY_POLL_MAX", "2.5"))          # วินาที รอผลสูงสุดของ inflight ก่อนยอมรี-tap
-    UNCLEAR_GRACE = int(os.getenv("CONF_OVERLAY_UNCLEAR_GRACE", "4"))    # อนุโลมจำนวนครั้ง "unclear" ก่อนรี-tap
     ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))            # UI บางเกมโชว์ next-level → ชดเชย -1
     ICON_SUCCESS_CLAMP_INC = int(os.getenv("ICON_SUCCESS_CLAMP_INC", "1"))  # จำกัดจำนวนขั้นที่เพิ่มจาก icon (1=เพิ่มครั้งละ 1)
     fx = int(os.getenv("ICON_FIX_CX", "960"))
     fy = int(os.getenv("ICON_FIX_CY", "323"))
     icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
 
+    # ---------- Stage: upgrade (ICON-ONLY; compare snapshot to decide) ----------
     if c["stage"] == "upgrade":
-        base = c["base_level"] or 0
-        cur = base + c["successes"]
-        LOG.i(f"[{dev_id}] UPGRADE base={base} succ={c['successes']} cur={cur} / target=+{target}")
+        # ensure defaults
+        c.setdefault("last_action_ts", 0.0)
+
+        # tunables
+        _POST_UPGRADE_WAIT = float(os.getenv("POST_UPGRADE_WAIT", "0.40"))
+        MIN_TAP_INTERVAL   = float(os.getenv("MIN_TAP_INTERVAL",   "0.05"))
+
+        # icon config
+        fx = int(os.getenv("ICON_FIX_CX", "960"))
+        fy = int(os.getenv("ICON_FIX_CY", "323"))
+        icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
+        ICON_LVL_OFFSET = int(os.getenv("ICON_LVL_OFFSET", "-1"))
+        ICON_SUCCESS_CLAMP_INC = int(os.getenv("ICON_SUCCESS_CLAMP_INC", "1"))
+
+        # metric สำหรับเทียบรูป (0..255) แล้ว normalize เป็น 0..1
+        ICON_SAME_THR = float(os.getenv("ICON_SAME_THR", "0.020"))  # 0.02 = ต่างน้อยกว่า ~2% ⇒ ถือว่า "เหมือนเดิม"
+
+        base = c.get("base_level", 0) or 0
+        cur  = base + c.get("successes", 0)
+
+        LOG.i(f"[{dev_id}] UPGRADE base={base} succ={c.get('successes',0)} cur={cur} / target=+{target}")
         _log_web(dev_id, f'UPGRADE: curr={_lv_html(cur, target)} / target={target}')
 
-        # -------- Stop conditions (ก่อนคลิก) --------
+        # stop ก่อนคลิก
         if cur >= target:
-            LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → นับชิ้นสำเร็จ 1 ชิ้น และไปชิ้นถัดไป")
+            LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป")
             _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(cur, target)} / target={target} ✅')
-            idx = c.get("item_idx", 0) % max(1, len(items))
-            lvl = _read_level_from_icon_topright(
-                adb, (fx, fy),
-                box_size=icon_box,
-                debug_tag=f"skip_{dev_id}_{idx}"
-            )
-            # ไม่ว่าบางครั้ง lvl จะ None หรือไม่ เราไปชิ้นถัดไปทันที (กัน overshoot)
             _next_item(dev_id, adb, items, swipe_cfg, c)
-            # reset inflight state when leaving item
-            c["inflight"] = False
-            c["inflight_ts"] = None
-            c["unclear_n"] = 0
             return {"done_item": True}
 
-        # -------- Pre-check: slot ยังอยู่ไหม --------
+        # slot หาย → ข้ามชิ้น
         if _is_slot_empty(adb, _pt("slot_center", (0, 0)), _size2("slot_roi", (80, 80))):
             LOG.i(f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
             _log_web(dev_id, 'ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้', "WARN")
             _next_item(dev_id, adb, items, swipe_cfg, c)
-            c["inflight"] = False
-            c["inflight_ts"] = None
-            c["unclear_n"] = 0
             return {"break_at_level": cur}
 
-        overlay_abs = _rect("overlay_abs", (0, 0, 0, 0))
+        # debounce ก่อนแตะ
+        remain = MIN_TAP_INTERVAL - (time.time() - c.get("last_action_ts", 0.0))
+        if remain > 0:
+            time.sleep(min(0.05, remain))
+        c["last_action_ts"] = time.time()
 
-        # -------- helper: resolve success/fail verdict --------
-        def _apply_verdict(v: str) -> Dict:
-            nonlocal base, cur
-            if v == "success":
-                c["successes"] += 1
-                new_cur = (c["base_level"] or 0) + c["successes"]
-                out["success_clicks"] = out.get("success_clicks", 0) + 1
-                LOG.i(f"[{dev_id}] ผล: สำเร็จ (+1) → success={c['successes']}")
-                _log_web(dev_id, f'ผล: <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
-                if new_cur >= target:
-                    LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
-                    _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
-                    _next_item(dev_id, adb, items, swipe_cfg, c)
-                    c["inflight"] = False
-                    c["inflight_ts"] = None
-                    c["unclear_n"] = 0
-                    out["done_item"] = True
-                return out
-            else:
-                LOG.i(f"[{dev_id}] ผล: ล้มเหลว → พยายามต่อจนถึง target={target}")
-                _log_web(dev_id, f'ผล: <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(cur, target)} / target={target}', "WARN")
-                return out
-
-        # -------- inflight branch: มีคลิกค้างรอผลอยู่ --------
-        if c.get("inflight"):
-            verdict = _overlay_detect(adb, overlay_abs)
-            if verdict in ("success", "fail"):
-                c["inflight"] = False
-                c["inflight_ts"] = None
-                c["unclear_n"] = 0
-                return _apply_verdict(verdict)
-
-            # poll ภายในรอบนี้ก่อน
-            t0 = time.time()
-            got = None
-            while time.time() - t0 < 1.5:
-                time.sleep(0.03)
-                chk = _overlay_detect(adb, overlay_abs)
-                if chk in ("success", "fail"):
-                    got = chk
-                    break
-            if got in ("success", "fail"):
-                c["inflight"] = False
-                c["inflight_ts"] = None
-                c["unclear_n"] = 0
-                return _apply_verdict(got)
-
-            # icon fallback: overlay ยังไม่ชัด → ลองอ่านระดับจากมุมขวาบน
-            try:
-                idx = c.get("item_idx", 0) % max(1, len(items))
-                raw_lvl = _read_level_from_icon_topright(
-                    adb, (fx, fy),
-                    box_size=icon_box,
-                    debug_tag=f"{dev_id}_idx{idx}"
-                )
-                if raw_lvl is not None:
-                    read_lvl = max(0, int(raw_lvl) + ICON_LVL_OFFSET)
-                    cur = (c["base_level"] or 0) + c["successes"]
-                    if read_lvl > cur:
-                        inc = read_lvl - cur
-                        gain = inc if ICON_SUCCESS_CLAMP_INC <= 0 else min(inc, ICON_SUCCESS_CLAMP_INC)
-                        c["successes"] += gain
-                        new_cur = (c["base_level"] or 0) + c["successes"]
-                        out["success_clicks"] = out.get("success_clicks", 0) + 1
-                        LOG.i(f"[{dev_id}] (icon-fallback) สำเร็จ → raw={raw_lvl} off={ICON_LVL_OFFSET} read={read_lvl} gain=+{gain}")
-                        _log_web(dev_id, f'(icon) <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
-                        c["inflight"] = False
-                        c["inflight_ts"] = None
-                        c["unclear_n"] = 0
-                        if new_cur >= target:
-                            LOG.i(f"[{dev_id}] (icon-fallback) บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
-                            _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
-                            _next_item(dev_id, adb, items, swipe_cfg, c)
-                            out["done_item"] = True
-                        return out
-                    else:
-                        LOG.i(f"[{dev_id}] (icon-fallback) read_lvl={read_lvl} ≤ cur={cur} → ยังไม่ฟันธง")
-            except Exception as e:
-                LOG.w(f"[{dev_id}] icon-fallback error: {e}")
-
-            # timeout/grace → เคลียร์ inflight เพื่ออนุญาตให้คลิกรอบใหม่
-            c["unclear_n"] = c.get("unclear_n", 0) + 1
-            waited = time.time() - (c.get("inflight_ts") or time.time())
-            LOG.i(f"[{dev_id}] overlay ยังไม่ชัดเจน (inflight) → unclear_n={c['unclear_n']} waited={waited:.2f}s")
-            _log_web(dev_id, f'overlay ยังไม่ชัดเจน (inflight) → n={c["unclear_n"]} t={waited:.1f}s', "WARN")
-            if waited >= POLL_MAX or c["unclear_n"] >= UNCLEAR_GRACE:
-                c["inflight"] = False
-                c["inflight_ts"] = None
-                c["unclear_n"] = 0
-                LOG.w(f"[{dev_id}] overlay ไม่ชัดนานเกิน → เคลียร์ inflight เพื่อรี-tap")
-                _log_web(dev_id, 'overlay ไม่ชัดนานเกิน → จะลองคลิกใหม่ในรอบถัดไป', "WARN")
-            return out
-
-        # -------- ไม่มี inflight → คลิกใหม่ได้ --------
+        # แตะปุ่มอัปเกรด
         ux, uy = _pt("upgrade_btn", (0, 0))
         LOG.i(f"[{dev_id}] UPGRADE: click upgrade_btn @({ux},{uy})")
         _log_web(dev_id, f'UPGRADE: click upgrade_btn @({ux},{uy})')
         adb.tap(ux, uy)
         out["upgrade_clicks"] = out.get("upgrade_clicks", 0) + 1
 
-        # set inflight for this click
-        c["inflight"] = True
-        c["inflight_ts"] = time.time()
-        c["unclear_n"] = 0
-
+        # รอสั้น ๆ ให้ภาพนิ่ง
         time.sleep(_POST_UPGRADE_WAIT)
 
-        # ลองอ่านผลทันที
-        verdict = _overlay_detect(adb, overlay_abs)
-        if verdict in ("success", "fail"):
-            c["inflight"] = False
-            c["inflight_ts"] = None
-            c["unclear_n"] = 0
-            return _apply_verdict(verdict)
+        # ถ้าชิ้นแตก/หายหลังแตะ → ไปชิ้นถัดไปทันที
+        if _is_slot_empty(adb, _pt("slot_center", (0, 0)), _size2("slot_roi", (80, 80))):
+            LOG.i(f"[{dev_id}] หลังแตะแล้วช่องว่าง → ชิ้นแตก/ถูกใช้ → ข้าม")
+            _log_web(dev_id, 'หลังแตะแล้วช่องว่าง → ข้ามชิ้นนี้', "WARN")
+            _next_item(dev_id, adb, items, swipe_cfg, c)
+            return {"break_after_tap": True}
 
-        # poll ดีเลย์สั้น ๆ
-        t0 = time.time()
-        got = None
-        while time.time() - t0 < 1.5:
-            time.sleep(0.03)
-            chk = _overlay_detect(adb, overlay_abs)
-            if chk in ("success", "fail"):
-                got = chk
-                break
-        if got in ("success", "fail"):
-            c["inflight"] = False
-            c["inflight_ts"] = None
-            c["unclear_n"] = 0
-            return _apply_verdict(got)
-
-        # icon fallback หลัง poll แล้วไม่ชัด
+        # อ่านเลเวล + snapshot ปัจจุบัน เพื่อนำมาเทียบกับ snapshot ก่อนหน้า
         try:
-            idx = c.get("item_idx", 0) % max(1, len(items))
-            raw_lvl = _read_level_from_icon_topright(
-                adb, (fx, fy),
-                box_size=icon_box,
-                debug_tag=f"{dev_id}_idx{idx}"
-            )
-            if raw_lvl is not None:
-                read_lvl = max(0, int(raw_lvl) + ICON_LVL_OFFSET)
-                cur = (c["base_level"] or 0) + c["successes"]
-                if read_lvl > cur:
-                    inc = read_lvl - cur
-                    gain = inc if ICON_SUCCESS_CLAMP_INC <= 0 else min(inc, ICON_SUCCESS_CLAMP_INC)
-                    c["successes"] += gain
-                    new_cur = (c["base_level"] or 0) + c["successes"]
-                    out["success_clicks"] = out.get("success_clicks", 0) + 1
-                    LOG.i(f"[{dev_id}] (icon-fallback) สำเร็จหลังคลิก → raw={raw_lvl} off={ICON_LVL_OFFSET} read={read_lvl} gain=+{gain}")
-                    _log_web(dev_id, f'(icon) <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
-                    c["inflight"] = False
-                    c["inflight_ts"] = None
-                    c["unclear_n"] = 0
-                    if new_cur >= target:
-                        LOG.i(f"[{dev_id}] (icon-fallback) บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
-                        _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
-                        _next_item(dev_id, adb, items, swipe_cfg, c)
-                        out["done_item"] = True
-                    return out
-                else:
-                    LOG.i(f"[{dev_id}] (icon-fallback) read_lvl={read_lvl} ≤ cur={cur} → ยังไม่ฟันธง")
-        except Exception as e:
-            LOG.w(f"[{dev_id}] icon-fallback error: {e}")
+            roi_prev = c.get("icon_roi_prev", None)
+        except Exception:
+            roi_prev = None
 
-        # ถึงตรงนี้ยังไม่ชัด → ปล่อย inflight ค้างไว้ให้รอบถัดไปตัดสินใจตาม timeout/grace
-        LOG.i(f"[{dev_id}] overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป (inflight=True)")
-        _log_web(dev_id, 'overlay ยังไม่ชัดเจน → จะลองต่อในรอบถัดไป', "WARN")
-        return out
+        lvl_after_raw = _read_level_from_icon_topright(
+            adb, (fx, fy),
+            box_size=icon_box,
+            debug_tag=f"{dev_id}_after_idx{c['item_idx']%max(1,len(items))}"
+        )
+        if lvl_after_raw is None:
+            lvl_after = max(0, 0 + ICON_LVL_OFFSET)
+        else:
+            lvl_after = max(0, int(lvl_after_raw) + ICON_LVL_OFFSET)
+
+        roi_after = None
+        diff_norm = 1.0
+        try:
+            roi_after = _icon_roi_norm(adb, (fx, fy), icon_box)
+            if roi_prev is not None and roi_after is not None and roi_prev.shape == roi_after.shape:
+                # mean absolute error normalized (0..1)
+                diff_norm = float(np.mean(np.abs(roi_after.astype(np.float32) - roi_prev.astype(np.float32))) / 255.0)
+        except Exception as e:
+            LOG.w(f"[{dev_id}] snapshot ROI(after) fail: {e}")
+
+        # ตัดสินใจ: รูปเหมือนเดิม = ล้มเหลว, รูปต่าง = สำเร็จ
+        if roi_prev is not None and roi_after is not None:
+            if diff_norm <= ICON_SAME_THR:
+                # FAIL
+                LOG.i(f"[{dev_id}] ผล: ล้มเหลว (roi same; diff={diff_norm:.3f} ≤ {ICON_SAME_THR:.3f})")
+                _log_web(dev_id, f'ผล: <b style="color:#e53935">ล้มเหลว</b> (img diff={diff_norm:.3f}) → curr={_lv_html(cur, target)}', "WARN")
+                # อัปเดต snapshot ไว้เทียบครั้งถัดไป (เผื่อมีสิ่งเล็ก ๆ เปลี่ยน)
+                c["icon_roi_prev"] = roi_after
+                return out
+            else:
+                # SUCCESS → นับจากระดับจริงหลังอัปเกรด (กัน overshoot)
+                real_gain = max(1, lvl_after - base - c.get("successes", 0))
+                if ICON_SUCCESS_CLAMP_INC > 0:
+                    real_gain = min(real_gain, ICON_SUCCESS_CLAMP_INC)
+                c["successes"] = c.get("successes", 0) + real_gain
+                new_cur = base + c["successes"]
+                out["success_clicks"] = out.get("success_clicks", 0) + 1
+                LOG.i(f"[{dev_id}] ผล: สำเร็จ (+{real_gain}) (img diff={diff_norm:.3f}) → success={c['successes']}, lvl_after={lvl_after}")
+                _log_web(dev_id, f'ผล: <b>สำเร็จ</b> (+{real_gain}) → curr={_lv_html(new_cur, target)} / target={target}')
+                c["icon_roi_prev"] = roi_after
+                if new_cur >= target:
+                    LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
+                    _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
+                    _next_item(dev_id, adb, items, swipe_cfg, c)
+                    out["done_item"] = True
+                return out
+        else:
+            # ไม่มี snapshot เทียบ → fallback โดยเทียบเลเวลอย่างเดียว
+            if lvl_after > cur:
+                inc = lvl_after - cur
+                gain = inc if ICON_SUCCESS_CLAMP_INC <= 0 else min(inc, ICON_SUCCESS_CLAMP_INC)
+                c["successes"] = c.get("successes", 0) + gain
+                new_cur = base + c["successes"]
+                out["success_clicks"] = out.get("success_clicks", 0) + 1
+                LOG.i(f"[{dev_id}] ผล: สำเร็จ (+{gain}) (fallback by level only) → success={c['successes']}")
+                _log_web(dev_id, f'(fallback) <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
+                c["icon_roi_prev"] = roi_after
+                if new_cur >= target:
+                    LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
+                    _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
+                    _next_item(dev_id, adb, items, swipe_cfg, c)
+                    out["done_item"] = True
+                return out
+            else:
+                LOG.i(f"[{dev_id}] ผล: ล้มเหลว (no snapshot; lvl_after={lvl_after} ≤ cur={cur})")
+                _log_web(dev_id, f'(fallback) <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(cur, target)}', "WARN")
+                c["icon_roi_prev"] = roi_after
+                return out
+
 
 # ===================== Loop wrapper =====================
 def worker_loop(ctrl, step_fn, sleep_sec: float = 0.15):
