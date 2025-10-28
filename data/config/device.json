@@ -8,8 +8,8 @@
     },
     {
       "id": "d2",
-      "name": "ดาบ121",
-      "device": "host.docker.internal:5595",
+      "name": "นินจา100",
+      "device": "host.docker.internal:5615",
       "target_level": 5
     },
     {

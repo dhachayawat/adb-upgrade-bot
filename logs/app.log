@@ -1,0 +1,1008 @@
+2025-10-28 08:12:17,784 INFO [rtlog] mp bridge started
+2025-10-28 08:12:17,785 INFO [mp_manager] weblog_queue set: True
+2025-10-28 08:12:17,801 INFO === BOOT OK (main_mp) ===
+2025-10-28 08:12:23,141 INFO [mp_manager] weblog_queue set: True
+2025-10-28 08:12:25,672 INFO [mp_manager] weblog_queue set: True
+2025-10-28 08:12:25,684 INFO [d1] started mp process pid=45
+2025-10-28 08:12:25,792 INFO [mp_manager] weblog_queue set: True
+2025-10-28 08:12:26,127 INFO [d1] MP worker start (target=+5)
+2025-10-28 08:12:26,129 INFO [host.docker.internal:5565] loop start
+2025-10-28 08:12:26,549 INFO [mp_manager] weblog_queue set: True
+2025-10-28 08:12:26,624 INFO [d2] started mp process pid=80
+2025-10-28 08:12:26,732 INFO [mp_manager] weblog_queue set: True
+2025-10-28 08:12:27,087 INFO [d2] MP worker start (target=+5)
+2025-10-28 08:12:27,089 INFO [host.docker.internal:5615] loop start
+2025-10-28 08:12:30,364 INFO [plus-bank] loaded → +1:109, +2:99, +3:73, +4:138, +5:94, +6:89
+2025-10-28 08:12:30,886 INFO [plus-bank] loaded → +1:109, +2:99, +3:73, +4:138, +5:94, +6:89
+2025-10-28 08:12:34,149 INFO [plus-cls] centroids → +1, +2, +3, +4, +5, +6
+2025-10-28 08:12:34,150 INFO [host.docker.internal:5565] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-28 08:12:34,151 INFO [host.docker.internal:5565] CFG slot_center=(849, 327)
+2025-10-28 08:12:34,153 INFO [host.docker.internal:5565] CFG slot_roi_size=[69,68]
+2025-10-28 08:12:34,154 INFO [host.docker.internal:5565] CFG upgrade_btn=(844, 626)
+2025-10-28 08:12:34,155 INFO [host.docker.internal:5565] CFG insert_roi=(x1=499,461,487,226)
+2025-10-28 08:12:34,156 INFO [host.docker.internal:5565] CFG items(len)=6 sample=[(285, 170), (345, 170), (405, 170), (465, 170), (525, 170), (585, 170)]
+2025-10-28 08:12:34,157 INFO [host.docker.internal:5565] CFG swipe={'x': 270, 'y': 220, 'dy': -75, 'ms': 800}
+2025-10-28 08:12:34,158 INFO [host.docker.internal:5565] stage=pick item_idx=0 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:34,160 INFO [host.docker.internal:5565] แตะไอเทม idx=0 @(285,170)
+2025-10-28 08:12:34,960 INFO [plus-cls] centroids → +1, +2, +3, +4, +5, +6
+2025-10-28 08:12:34,961 INFO [host.docker.internal:5615] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0
+2025-10-28 08:12:34,963 INFO [host.docker.internal:5615] CFG slot_center=(849, 327)
+2025-10-28 08:12:34,964 INFO [host.docker.internal:5615] CFG slot_roi_size=[69,68]
+2025-10-28 08:12:34,966 INFO [host.docker.internal:5615] CFG upgrade_btn=(844, 626)
+2025-10-28 08:12:34,967 INFO [host.docker.internal:5615] CFG insert_roi=(x1=499,461,487,226)
+2025-10-28 08:12:34,968 INFO [host.docker.internal:5615] CFG items(len)=6 sample=[(285, 170), (345, 170), (405, 170), (465, 170), (525, 170), (585, 170)]
+2025-10-28 08:12:34,969 INFO [host.docker.internal:5615] CFG swipe={'x': 270, 'y': 220, 'dy': -75, 'ms': 800}
+2025-10-28 08:12:34,971 INFO [host.docker.internal:5615] stage=pick item_idx=0 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:34,973 INFO [host.docker.internal:5615] แตะไอเทม idx=0 @(285,170)
+2025-10-28 08:12:36,593 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:12:36,695 INFO [host.docker.internal:5565] stage=insert item_idx=0 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:36,696 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=0 @(285,170)
+2025-10-28 08:12:37,755 INFO [host.docker.internal:5615] stage=insert item_idx=0 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:37,757 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=0 @(285,170)
+2025-10-28 08:12:37,798 WARNING [INSERT] หา/กดปุ่ม 'ใส่ลง' ไม่เจอใน ROI
+2025-10-28 08:12:37,799 WARNING [host.docker.internal:5565] INSERT: CV not found → fallback slot_center @(849,327)
+2025-10-28 08:12:38,401 INFO [host.docker.internal:5565] stage=inspect item_idx=0 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:38,788 WARNING [INSERT] หา/กดปุ่ม 'ใส่ลง' ไม่เจอใน ROI
+2025-10-28 08:12:38,790 WARNING [host.docker.internal:5615] INSERT: CV not found → fallback slot_center @(849,327)
+2025-10-28 08:12:39,292 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:12:39,394 INFO [host.docker.internal:5615] stage=inspect item_idx=0 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:40,313 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:12:40,314 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:12:40,416 INFO [host.docker.internal:5565] stage=upgrade item_idx=0 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:12:40,417 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:12:40,883 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:12:40,885 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:12:40,987 INFO [host.docker.internal:5615] stage=upgrade item_idx=0 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:12:40,988 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:12:41,313 INFO [ตรวจช่อง] ว่าง=True (เทมเพลต score=0.992 thr=0.85)
+2025-10-28 08:12:41,314 INFO [host.docker.internal:5565] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้
+2025-10-28 08:12:41,414 INFO [host.docker.internal:5565] stage=pick item_idx=1 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:41,415 INFO [host.docker.internal:5565] แตะไอเทม idx=1 @(345,170)
+2025-10-28 08:12:41,651 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.098 thr=0.85)
+2025-10-28 08:12:41,653 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:12:43,837 INFO [host.docker.internal:5565] stage=insert item_idx=1 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:43,839 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=1 @(345,170)
+2025-10-28 08:12:44,727 INFO [INSERT] click at (645,613) score=0.990 thr=0.86
+2025-10-28 08:12:45,658 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.172 thr=0.85)
+2025-10-28 08:12:46,600 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.878 (thr=0.83)
+2025-10-28 08:12:47,779 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=1 | diff=0.011 digit None→None
+2025-10-28 08:12:48,051 INFO [host.docker.internal:5565] stage=inspect item_idx=1 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:12:49,130 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:12:49,840 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:12:49,842 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:12:49,944 INFO [host.docker.internal:5565] stage=upgrade item_idx=1 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:12:49,945 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:12:50,058 INFO [ICON-PLUS BANK(gray)] level=+3 score=1.000 (thr=0.83)
+2025-10-28 08:12:50,869 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:12:50,871 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:12:50,994 INFO [host.docker.internal:5615] [poll] num=2 vs prev_cur=1 | diff=0.011 digit None→None
+2025-10-28 08:12:50,995 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:12:51,097 INFO [host.docker.internal:5615] stage=upgrade item_idx=0 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:12:51,098 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:12:51,847 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:12:51,849 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:12:54,690 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:12:55,617 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.878 (thr=0.83)
+2025-10-28 08:12:56,047 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.040 thr=0.85)
+2025-10-28 08:12:56,799 INFO [host.docker.internal:5565] [posttap] num=1 vs prev_cur=0 | diff=0.444 digit None→None
+2025-10-28 08:12:56,800 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:12:56,902 INFO [host.docker.internal:5565] stage=upgrade item_idx=1 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:12:56,904 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:12:56,962 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.874 (thr=0.83)
+2025-10-28 08:12:57,747 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:12:57,749 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:12:57,928 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=2 | diff=0.013 digit None→None
+2025-10-28 08:12:57,930 WARNING [host.docker.internal:5615] [posttap] after_num<2 → treat as FAIL (no-decrease rule)
+2025-10-28 08:12:58,741 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:12:59,453 INFO [ICON-PLUS BANK(gray)] level=+4 score=1.000 (thr=0.83)
+2025-10-28 08:13:00,323 INFO [host.docker.internal:5615] [poll] num=3 vs prev_cur=2 | diff=0.014 digit None→None
+2025-10-28 08:13:00,324 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:13:00,326 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:13:00,427 INFO [host.docker.internal:5615] stage=upgrade item_idx=0 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:13:00,429 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:13:01,072 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:13:01,074 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:01,577 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.034 thr=0.85)
+2025-10-28 08:13:02,398 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:13:03,343 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=1 | diff=0.251 digit None→None
+2025-10-28 08:13:03,344 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=2
+2025-10-28 08:13:03,346 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:13:03,448 INFO [host.docker.internal:5565] stage=upgrade item_idx=1 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:13:03,449 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:13:04,189 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:13:04,190 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:05,117 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.339 thr=0.85)
+2025-10-28 08:13:06,210 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.845 (thr=0.83)
+2025-10-28 08:13:07,335 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=3 | diff=0.014 digit None→None
+2025-10-28 08:13:07,336 WARNING [host.docker.internal:5615] [posttap] after_num<3 → treat as FAIL (no-decrease rule)
+2025-10-28 08:13:08,530 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:13:08,618 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.064 thr=0.85)
+2025-10-28 08:13:09,451 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.964 (thr=0.83)
+2025-10-28 08:13:09,670 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:13:10,565 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.213 digit None→None
+2025-10-28 08:13:10,566 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:13:10,667 INFO [host.docker.internal:5565] stage=upgrade item_idx=1 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:13:10,669 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:13:10,809 INFO [host.docker.internal:5615] [poll] num=4 vs prev_cur=3 | diff=0.013 digit None→None
+2025-10-28 08:13:10,810 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:13:10,911 INFO [host.docker.internal:5615] stage=upgrade item_idx=0 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:13:10,913 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:13:11,650 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:13:11,652 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:11,903 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:13:11,905 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:15,690 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.156 thr=0.85)
+2025-10-28 08:13:16,160 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.165 thr=0.85)
+2025-10-28 08:13:16,419 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.945 (thr=0.83)
+2025-10-28 08:13:17,148 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.843 (thr=0.83)
+2025-10-28 08:13:17,492 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=3 | diff=0.251 digit None→None
+2025-10-28 08:13:18,126 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=4 | diff=0.006 digit None→None
+2025-10-28 08:13:18,127 WARNING [host.docker.internal:5615] [posttap] after_num<4 → treat as FAIL (no-decrease rule)
+2025-10-28 08:13:18,495 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:13:19,162 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:13:19,377 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:13:19,993 INFO [ICON-PLUS BANK(gray)] level=+6 score=1.000 (thr=0.83)
+2025-10-28 08:13:20,259 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=3 | diff=0.013 digit None→None
+2025-10-28 08:13:20,260 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:13:20,362 INFO [host.docker.internal:5565] stage=upgrade item_idx=1 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:13:20,363 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:13:20,952 INFO [host.docker.internal:5615] [poll] num=5 vs prev_cur=4 | diff=0.006 digit None→None
+2025-10-28 08:13:20,954 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=5
+2025-10-28 08:13:20,955 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:13:21,056 INFO [host.docker.internal:5615] stage=pick item_idx=1 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:21,058 INFO [host.docker.internal:5615] แตะไอเทม idx=1 @(345,170)
+2025-10-28 08:13:21,295 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:13:21,297 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:23,408 INFO [host.docker.internal:5615] stage=insert item_idx=1 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:23,409 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=1 @(345,170)
+2025-10-28 08:13:24,334 WARNING [INSERT] หา/กดปุ่ม 'ใส่ลง' ไม่เจอใน ROI
+2025-10-28 08:13:24,336 WARNING [host.docker.internal:5615] INSERT: CV not found → fallback slot_center @(849,327)
+2025-10-28 08:13:24,837 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:13:24,940 INFO [host.docker.internal:5615] stage=inspect item_idx=1 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:25,418 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.251 thr=0.85)
+2025-10-28 08:13:26,212 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.972 (thr=0.83)
+2025-10-28 08:13:26,666 INFO [ICON-PLUS BANK(gray)] level=+6 score=1.000 (thr=0.83)
+2025-10-28 08:13:26,670 INFO [host.docker.internal:5615] หลัง INSERT baseline level=5 digit=None
+2025-10-28 08:13:26,773 INFO [host.docker.internal:5615] stage=upgrade item_idx=1 target=+5 base=5 succ=0 last_cur=5
+2025-10-28 08:13:26,774 INFO [host.docker.internal:5615] UPGRADE base=5 succ=0 cur=5 (prev_cur=5) / target=+5
+2025-10-28 08:13:26,776 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป
+2025-10-28 08:13:26,877 INFO [host.docker.internal:5615] stage=pick item_idx=2 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:26,878 INFO [host.docker.internal:5615] แตะไอเทม idx=2 @(405,170)
+2025-10-28 08:13:27,185 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=4 | diff=0.044 digit None→None
+2025-10-28 08:13:27,186 WARNING [host.docker.internal:5565] [posttap] after_num<4 → treat as FAIL (no-decrease rule)
+2025-10-28 08:13:28,071 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:13:28,849 INFO [ICON-PLUS BANK(gray)] level=+6 score=1.000 (thr=0.83)
+2025-10-28 08:13:29,519 INFO [host.docker.internal:5615] stage=insert item_idx=2 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:29,521 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=2 @(405,170)
+2025-10-28 08:13:29,774 INFO [host.docker.internal:5565] [poll] num=5 vs prev_cur=4 | diff=0.007 digit None→None
+2025-10-28 08:13:29,776 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=5
+2025-10-28 08:13:29,777 INFO [host.docker.internal:5565] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:13:29,879 INFO [host.docker.internal:5565] stage=pick item_idx=2 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:29,880 INFO [host.docker.internal:5565] แตะไอเทม idx=2 @(405,170)
+2025-10-28 08:13:30,436 INFO [INSERT] click at (718,552) score=0.978 thr=0.86
+2025-10-28 08:13:32,627 INFO [host.docker.internal:5565] stage=insert item_idx=2 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:32,628 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=2 @(405,170)
+2025-10-28 08:13:33,383 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:13:33,485 INFO [host.docker.internal:5615] stage=inspect item_idx=2 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:33,638 INFO [INSERT] click at (706,613) score=0.979 thr=0.86
+2025-10-28 08:13:35,310 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:13:35,311 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:13:35,413 INFO [host.docker.internal:5615] stage=upgrade item_idx=2 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:13:35,414 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:13:36,198 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.098 thr=0.85)
+2025-10-28 08:13:36,201 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:36,645 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:13:36,747 INFO [host.docker.internal:5565] stage=inspect item_idx=2 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:13:38,462 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:13:38,464 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:13:38,565 INFO [host.docker.internal:5565] stage=upgrade item_idx=2 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:13:38,567 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:13:39,322 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:13:39,324 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:40,355 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.075 thr=0.85)
+2025-10-28 08:13:41,095 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.837 (thr=0.83)
+2025-10-28 08:13:41,961 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=1 | diff=0.079 digit None→3
+2025-10-28 08:13:42,984 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:13:43,338 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:13:43,992 INFO [ICON-PLUS BANK(gray)] level=+3 score=1.000 (thr=0.83)
+2025-10-28 08:13:44,284 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.923 (thr=0.83)
+2025-10-28 08:13:45,289 INFO [host.docker.internal:5615] [poll] num=2 vs prev_cur=1 | diff=0.011 digit None→None
+2025-10-28 08:13:45,291 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:13:45,293 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:13:45,395 INFO [host.docker.internal:5615] stage=upgrade item_idx=2 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:13:45,397 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:13:45,620 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.033 digit None→None
+2025-10-28 08:13:45,622 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:13:45,624 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:13:45,726 INFO [host.docker.internal:5565] stage=upgrade item_idx=2 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:13:45,728 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:13:46,471 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:13:46,474 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:46,624 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:13:46,626 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:50,908 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.202 thr=0.85)
+2025-10-28 08:13:50,964 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.263 thr=0.85)
+2025-10-28 08:13:51,845 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.835 (thr=0.83)
+2025-10-28 08:13:51,931 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.969 (thr=0.83)
+2025-10-28 08:13:52,819 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=2 | diff=0.037 digit None→None
+2025-10-28 08:13:52,820 WARNING [host.docker.internal:5615] [posttap] after_num<2 → treat as FAIL (no-decrease rule)
+2025-10-28 08:13:52,913 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.017 digit None→None
+2025-10-28 08:13:52,914 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:13:53,016 INFO [host.docker.internal:5565] stage=upgrade item_idx=2 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:13:53,017 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:13:53,791 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:13:53,947 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:13:53,949 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:54,594 INFO [ICON-PLUS BANK(gray)] level=+4 score=1.000 (thr=0.83)
+2025-10-28 08:13:55,794 INFO [host.docker.internal:5615] [poll] num=3 vs prev_cur=2 | diff=0.014 digit None→None
+2025-10-28 08:13:55,795 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:13:55,898 INFO [host.docker.internal:5615] stage=upgrade item_idx=2 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:13:55,899 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:13:56,802 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:13:56,804 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:13:57,897 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.147 thr=0.85)
+2025-10-28 08:13:58,904 INFO [ICON-PLUS OCR] text='4' → level≈+4
+2025-10-28 08:13:59,848 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.072 digit None→None
+2025-10-28 08:13:59,850 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:13:59,952 INFO [host.docker.internal:5565] stage=upgrade item_idx=2 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:13:59,954 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:14:00,553 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.152 thr=0.85)
+2025-10-28 08:14:00,920 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:14:00,922 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:01,724 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:02,711 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=3 | diff=0.014 digit None→None
+2025-10-28 08:14:03,682 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:14:04,651 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:14:05,124 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.260 thr=0.85)
+2025-10-28 08:14:05,798 INFO [host.docker.internal:5615] [poll] num=4 vs prev_cur=3 | diff=0.013 digit None→None
+2025-10-28 08:14:05,800 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:14:05,901 INFO [host.docker.internal:5615] stage=upgrade item_idx=2 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:14:05,903 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:14:06,256 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:06,637 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:14:06,639 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:07,167 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=3 | diff=0.060 digit None→None
+2025-10-28 08:14:07,169 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=4
+2025-10-28 08:14:07,271 INFO [host.docker.internal:5565] stage=upgrade item_idx=2 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:14:07,273 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:14:08,069 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:14:08,071 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:10,943 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.386 thr=0.85)
+2025-10-28 08:14:12,121 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:12,160 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.139 thr=0.85)
+2025-10-28 08:14:13,215 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.920 (thr=0.83)
+2025-10-28 08:14:13,296 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=4 | diff=0.269 digit None→None
+2025-10-28 08:14:13,297 INFO [host.docker.internal:5615] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:14:13,298 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:14:13,399 INFO [host.docker.internal:5615] stage=pick item_idx=3 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:13,401 INFO [host.docker.internal:5615] แตะไอเทม idx=3 @(465,170)
+2025-10-28 08:14:14,153 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=4 | diff=0.040 digit None→None
+2025-10-28 08:14:14,155 WARNING [host.docker.internal:5565] [posttap] after_num<4 → treat as FAIL (no-decrease rule)
+2025-10-28 08:14:15,054 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:14:15,887 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:14:15,998 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:14:16,100 INFO [host.docker.internal:5615] stage=insert item_idx=3 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:16,101 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=3 @(465,170)
+2025-10-28 08:14:16,982 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=4 | diff=0.014 digit None→None
+2025-10-28 08:14:16,983 INFO [host.docker.internal:5565] ผล: ล้มเหลว (no change within 0.40s)
+2025-10-28 08:14:17,085 INFO [host.docker.internal:5565] stage=upgrade item_idx=2 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:14:17,086 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:14:17,159 INFO [INSERT] click at (779,552) score=0.985 thr=0.86
+2025-10-28 08:14:18,027 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:14:18,029 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:20,258 INFO [host.docker.internal:5615] stage=inspect item_idx=3 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:21,744 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.701 thr=0.85)
+2025-10-28 08:14:22,257 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:14:22,259 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:14:22,361 INFO [host.docker.internal:5615] stage=upgrade item_idx=3 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:14:22,362 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:14:22,642 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:23,201 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.098 thr=0.85)
+2025-10-28 08:14:23,203 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:23,504 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=4 | diff=0.234 digit None→None
+2025-10-28 08:14:23,506 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:14:23,507 INFO [host.docker.internal:5565] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:14:23,609 INFO [host.docker.internal:5565] stage=pick item_idx=3 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:23,610 INFO [host.docker.internal:5565] แตะไอเทม idx=3 @(465,170)
+2025-10-28 08:14:26,102 INFO [host.docker.internal:5565] stage=insert item_idx=3 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:26,103 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=3 @(465,170)
+2025-10-28 08:14:27,105 INFO [INSERT] click at (768,613) score=0.983 thr=0.86
+2025-10-28 08:14:27,147 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:14:27,993 INFO [ICON-PLUS OCR] text='7' → level≈+7
+2025-10-28 08:14:28,821 INFO [host.docker.internal:5615] [posttap] num=6 vs prev_cur=1 | diff=0.202 digit None→None
+2025-10-28 08:14:28,822 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:14:28,923 INFO [host.docker.internal:5615] stage=upgrade item_idx=3 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:14:28,925 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:14:29,736 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:14:29,738 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:30,005 INFO [host.docker.internal:5565] stage=inspect item_idx=3 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:31,809 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:14:31,811 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:14:31,912 INFO [host.docker.internal:5565] stage=upgrade item_idx=3 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:14:31,913 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:14:32,594 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:14:32,596 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:33,500 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.174 thr=0.85)
+2025-10-28 08:14:34,371 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:35,309 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=2 | diff=0.136 digit None→None
+2025-10-28 08:14:35,310 INFO [host.docker.internal:5615] [posttap] SUCCESS by diff (+1) → new_cur=3
+2025-10-28 08:14:35,412 INFO [host.docker.internal:5615] stage=upgrade item_idx=3 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:14:35,414 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:14:36,149 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:14:36,152 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:36,717 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.127 thr=0.85)
+2025-10-28 08:14:37,546 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.937 (thr=0.83)
+2025-10-28 08:14:38,489 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.083 digit None→None
+2025-10-28 08:14:38,490 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:14:38,592 INFO [host.docker.internal:5565] stage=upgrade item_idx=3 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:14:38,594 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:14:39,205 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:14:39,206 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:40,099 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:14:40,964 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:41,976 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=3 | diff=0.018 digit None→None
+2025-10-28 08:14:42,876 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:14:43,140 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.037 thr=0.85)
+2025-10-28 08:14:43,625 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:14:44,149 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.946 (thr=0.83)
+2025-10-28 08:14:44,661 INFO [host.docker.internal:5615] [poll] num=4 vs prev_cur=3 | diff=0.098 digit None→None
+2025-10-28 08:14:44,663 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:14:44,764 INFO [host.docker.internal:5615] stage=upgrade item_idx=3 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:14:44,765 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:14:45,143 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.032 digit None→None
+2025-10-28 08:14:45,144 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:14:45,145 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:14:45,247 INFO [host.docker.internal:5565] stage=upgrade item_idx=3 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:14:45,248 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:14:45,692 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:14:45,694 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:46,048 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:14:46,050 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:49,733 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.438 thr=0.85)
+2025-10-28 08:14:50,232 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.140 thr=0.85)
+2025-10-28 08:14:50,751 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:51,087 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.936 (thr=0.83)
+2025-10-28 08:14:51,567 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=4 | diff=0.250 digit None→None
+2025-10-28 08:14:51,568 INFO [host.docker.internal:5615] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:14:51,569 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:14:51,570 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:14:51,672 INFO [host.docker.internal:5615] stage=pick item_idx=4 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:51,674 INFO [host.docker.internal:5615] แตะไอเทม idx=4 @(525,170)
+2025-10-28 08:14:52,001 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.040 digit None→None
+2025-10-28 08:14:52,002 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:14:52,103 INFO [host.docker.internal:5565] stage=upgrade item_idx=3 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:14:52,105 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:14:52,803 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:14:52,805 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:54,007 INFO [host.docker.internal:5615] stage=insert item_idx=4 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:54,008 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=4 @(525,170)
+2025-10-28 08:14:54,967 INFO [INSERT] click at (840,552) score=0.961 thr=0.86
+2025-10-28 08:14:56,808 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:14:57,669 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:14:57,846 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:14:57,947 INFO [host.docker.internal:5615] stage=inspect item_idx=4 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:14:58,622 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=3 | diff=0.122 digit None→None
+2025-10-28 08:14:58,623 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=4
+2025-10-28 08:14:58,725 INFO [host.docker.internal:5565] stage=upgrade item_idx=3 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:14:58,727 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:14:59,634 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:14:59,635 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:14:59,916 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:14:59,918 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:15:00,019 INFO [host.docker.internal:5615] stage=upgrade item_idx=4 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:15:00,021 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:15:00,811 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.098 thr=0.85)
+2025-10-28 08:15:00,812 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:03,426 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.716 thr=0.85)
+2025-10-28 08:15:04,380 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:15:04,917 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.070 thr=0.85)
+2025-10-28 08:15:05,451 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=4 | diff=0.271 digit None→None
+2025-10-28 08:15:05,452 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:15:05,455 INFO [host.docker.internal:5565] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:15:05,557 INFO [host.docker.internal:5565] stage=pick item_idx=4 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:05,558 INFO [host.docker.internal:5565] แตะไอเทม idx=4 @(525,170)
+2025-10-28 08:15:05,864 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.844 (thr=0.83)
+2025-10-28 08:15:06,820 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=1 | diff=0.016 digit None→None
+2025-10-28 08:15:07,932 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:15:08,137 INFO [host.docker.internal:5565] stage=insert item_idx=4 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:08,139 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=4 @(525,170)
+2025-10-28 08:15:08,808 INFO [ICON-PLUS BANK(gray)] level=+3 score=1.000 (thr=0.83)
+2025-10-28 08:15:09,206 INFO [INSERT] click at (829,613) score=0.984 thr=0.86
+2025-10-28 08:15:09,784 INFO [host.docker.internal:5615] [poll] num=2 vs prev_cur=1 | diff=0.011 digit None→None
+2025-10-28 08:15:09,786 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:15:09,787 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:15:09,888 INFO [host.docker.internal:5615] stage=upgrade item_idx=4 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:15:09,890 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:15:10,875 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.095 thr=0.85)
+2025-10-28 08:15:10,877 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:12,328 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:15:12,430 INFO [host.docker.internal:5565] stage=inspect item_idx=4 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:14,402 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:15:14,405 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:15:14,507 INFO [host.docker.internal:5565] stage=upgrade item_idx=4 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:15:14,508 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:15:15,062 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:15:15,576 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:15:15,578 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:15,905 INFO [ICON-PLUS BANK(gray)] level=+2 score=0.896 (thr=0.83)
+2025-10-28 08:15:16,931 INFO [host.docker.internal:5615] [posttap] num=1 vs prev_cur=2 | diff=0.028 digit None→None
+2025-10-28 08:15:16,932 WARNING [host.docker.internal:5615] [posttap] after_num<2 → treat as FAIL (no-decrease rule)
+2025-10-28 08:15:17,857 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:15:18,716 INFO [ICON-PLUS BANK(gray)] level=+4 score=1.000 (thr=0.83)
+2025-10-28 08:15:19,843 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:15:19,892 INFO [host.docker.internal:5615] [poll] num=3 vs prev_cur=2 | diff=0.013 digit None→None
+2025-10-28 08:15:19,894 INFO [host.docker.internal:5615] [poll] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:15:19,995 INFO [host.docker.internal:5615] stage=upgrade item_idx=4 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:15:19,996 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:15:20,765 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.945 (thr=0.83)
+2025-10-28 08:15:20,988 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.096 thr=0.85)
+2025-10-28 08:15:20,990 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:21,787 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.077 digit None→None
+2025-10-28 08:15:21,789 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:15:21,790 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:15:21,891 INFO [host.docker.internal:5565] stage=upgrade item_idx=4 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:15:21,892 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:15:22,681 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:15:22,684 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:24,954 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.076 thr=0.85)
+2025-10-28 08:15:25,967 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:15:26,522 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:15:27,076 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=3 | diff=0.048 digit None→None
+2025-10-28 08:15:27,077 INFO [host.docker.internal:5615] [posttap] SUCCESS by diff (+1) → new_cur=4
+2025-10-28 08:15:27,078 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:15:27,180 INFO [host.docker.internal:5615] stage=upgrade item_idx=4 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:15:27,181 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:15:27,568 INFO [ICON-PLUS OCR] text='4' → level≈+4
+2025-10-28 08:15:28,121 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:15:28,123 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:28,396 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.016 digit None→None
+2025-10-28 08:15:28,398 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:15:28,499 INFO [host.docker.internal:5565] stage=upgrade item_idx=4 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:15:28,501 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:15:29,258 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:15:29,260 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:31,989 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.237 thr=0.85)
+2025-10-28 08:15:33,030 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:15:33,238 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.376 thr=0.85)
+2025-10-28 08:15:34,123 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.945 (thr=0.83)
+2025-10-28 08:15:34,124 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=4 | diff=0.021 digit None→7
+2025-10-28 08:15:34,126 INFO [host.docker.internal:5615] [posttap] SUCCESS by ocr (+1) → new_cur=5
+2025-10-28 08:15:34,129 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:15:34,231 INFO [host.docker.internal:5615] stage=pick item_idx=5 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:34,233 INFO [host.docker.internal:5615] แตะไอเทม idx=5 @(585,170)
+2025-10-28 08:15:35,108 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.019 digit None→None
+2025-10-28 08:15:35,110 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:15:35,212 INFO [host.docker.internal:5565] stage=upgrade item_idx=4 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:15:35,214 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:15:35,866 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:15:35,869 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:36,652 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:15:36,753 INFO [host.docker.internal:5615] stage=insert item_idx=5 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:36,755 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=5 @(585,170)
+2025-10-28 08:15:37,896 INFO [INSERT] click at (847,552) score=0.958 thr=0.86
+2025-10-28 08:15:39,985 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.027 thr=0.85)
+2025-10-28 08:15:40,863 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.924 (thr=0.83)
+2025-10-28 08:15:41,101 INFO [host.docker.internal:5615] stage=inspect item_idx=5 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:41,895 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=3 | diff=0.040 digit None→None
+2025-10-28 08:15:42,947 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:15:43,030 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:15:43,033 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=7
+2025-10-28 08:15:43,134 INFO [host.docker.internal:5615] stage=upgrade item_idx=5 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:15:43,136 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:15:43,838 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:15:43,972 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:15:43,974 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:44,743 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=3 | diff=0.068 digit None→None
+2025-10-28 08:15:44,744 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:15:44,845 INFO [host.docker.internal:5565] stage=upgrade item_idx=4 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:15:44,847 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:15:45,807 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:15:45,809 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:48,003 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.154 thr=0.85)
+2025-10-28 08:15:48,826 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.927 (thr=0.83)
+2025-10-28 08:15:49,537 INFO [ตรวจช่อง] ว่าง=True (เทมเพลต score=0.992 thr=0.85)
+2025-10-28 08:15:49,539 INFO [host.docker.internal:5565] ช่องว่างหลัง tap → ข้ามชิ้น
+2025-10-28 08:15:49,640 INFO [host.docker.internal:5565] stage=pick item_idx=5 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:49,642 INFO [host.docker.internal:5565] แตะไอเทม idx=5 @(585,170)
+2025-10-28 08:15:49,895 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=1 | diff=0.103 digit 7→None
+2025-10-28 08:15:49,896 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:15:49,997 INFO [host.docker.internal:5615] stage=upgrade item_idx=5 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:15:49,998 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:15:50,826 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:15:50,828 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:51,847 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:15:51,950 INFO [host.docker.internal:5565] stage=insert item_idx=5 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:51,951 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=5 @(585,170)
+2025-10-28 08:15:52,815 INFO [INSERT] click at (891,613) score=0.969 thr=0.86
+2025-10-28 08:15:54,797 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.380 thr=0.85)
+2025-10-28 08:15:55,681 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.979 (thr=0.83)
+2025-10-28 08:15:55,813 INFO [host.docker.internal:5565] stage=inspect item_idx=5 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:15:56,487 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=2 | diff=0.076 digit None→None
+2025-10-28 08:15:56,488 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:15:56,590 INFO [host.docker.internal:5615] stage=upgrade item_idx=5 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:15:56,591 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:15:57,363 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:15:57,365 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:15:57,594 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:15:57,596 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:15:57,597 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:15:57,699 INFO [host.docker.internal:5565] stage=upgrade item_idx=5 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:15:57,701 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:15:58,497 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:15:58,499 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:01,404 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.139 thr=0.85)
+2025-10-28 08:16:02,225 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:16:02,852 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:16:03,121 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=3 | diff=0.033 digit None→4
+2025-10-28 08:16:03,122 INFO [host.docker.internal:5615] [posttap] SUCCESS by ocr (+1) → new_cur=4
+2025-10-28 08:16:03,123 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:16:03,225 INFO [host.docker.internal:5615] stage=upgrade item_idx=5 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:16:03,227 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:16:03,839 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.935 (thr=0.83)
+2025-10-28 08:16:04,074 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:16:04,076 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:04,759 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.028 digit None→None
+2025-10-28 08:16:04,761 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:16:04,862 INFO [host.docker.internal:5565] stage=upgrade item_idx=5 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:16:04,864 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:16:05,775 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:16:05,777 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:08,040 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.206 thr=0.85)
+2025-10-28 08:16:08,921 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.870 (thr=0.83)
+2025-10-28 08:16:09,832 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.396 thr=0.85)
+2025-10-28 08:16:09,837 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=4 | diff=0.098 digit 4→None
+2025-10-28 08:16:09,838 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=5
+2025-10-28 08:16:09,839 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:16:09,840 INFO [host.docker.internal:5615] SWIPE after 6 items → (270,220)→(270,145) ms=800
+2025-10-28 08:16:10,563 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.923 (thr=0.83)
+2025-10-28 08:16:11,501 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.098 digit None→None
+2025-10-28 08:16:11,503 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:16:11,605 INFO [host.docker.internal:5565] stage=upgrade item_idx=5 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:16:11,606 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:16:12,416 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:16:12,418 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:15,709 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:16:15,811 INFO [host.docker.internal:5615] stage=pick item_idx=6 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:16:15,812 INFO [host.docker.internal:5615] แตะไอเทม idx=0 @(285,170)
+2025-10-28 08:16:16,045 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.035 thr=0.85)
+2025-10-28 08:16:17,076 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:16:18,052 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=2 | diff=0.029 digit None→None
+2025-10-28 08:16:18,576 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:16:18,678 INFO [host.docker.internal:5615] stage=insert item_idx=6 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:16:18,679 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=0 @(285,170)
+2025-10-28 08:16:18,865 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:16:19,690 INFO [INSERT] click at (540,551) score=0.961 thr=0.86
+2025-10-28 08:16:19,717 INFO [ICON-PLUS BANK(gray)] level=+4 score=1.000 (thr=0.83)
+2025-10-28 08:16:20,767 INFO [host.docker.internal:5565] [poll] num=3 vs prev_cur=2 | diff=0.101 digit None→None
+2025-10-28 08:16:20,769 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:16:20,871 INFO [host.docker.internal:5565] stage=upgrade item_idx=5 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:16:20,872 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:16:21,795 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:16:21,797 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:22,840 INFO [host.docker.internal:5615] stage=inspect item_idx=6 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:16:24,677 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:16:24,679 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=7
+2025-10-28 08:16:24,680 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:16:24,782 INFO [host.docker.internal:5615] stage=upgrade item_idx=6 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:16:24,784 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:16:25,667 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:16:25,669 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:25,699 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:16:26,506 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.936 (thr=0.83)
+2025-10-28 08:16:27,544 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=3 | diff=0.101 digit None→None
+2025-10-28 08:16:28,362 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:16:29,050 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:16:29,885 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=-0.006 thr=0.85)
+2025-10-28 08:16:30,086 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=3 | diff=0.013 digit None→None
+2025-10-28 08:16:30,087 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:16:30,089 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:16:30,190 INFO [host.docker.internal:5565] stage=upgrade item_idx=5 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:16:30,192 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:16:30,844 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.977 (thr=0.83)
+2025-10-28 08:16:31,035 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:16:31,037 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:31,939 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=1 | diff=0.010 digit 7→None
+2025-10-28 08:16:31,941 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:16:32,043 INFO [host.docker.internal:5615] stage=upgrade item_idx=6 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:16:32,044 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:16:32,920 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:16:32,923 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:35,254 INFO [ตรวจช่อง] ว่าง=True (เทมเพลต score=0.992 thr=0.85)
+2025-10-28 08:16:35,257 INFO [host.docker.internal:5565] ช่องว่างหลัง tap → ข้ามชิ้น
+2025-10-28 08:16:35,258 INFO [host.docker.internal:5565] SWIPE after 6 items → (270,220)→(270,145) ms=800
+2025-10-28 08:16:37,239 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.175 thr=0.85)
+2025-10-28 08:16:38,406 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:16:39,471 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=2 | diff=0.001 digit None→None
+2025-10-28 08:16:40,417 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:16:41,284 INFO [ICON-PLUS BANK(gray)] level=+3 score=1.000 (thr=0.83)
+2025-10-28 08:16:41,463 INFO [host.docker.internal:5565] stage=pick item_idx=6 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:16:41,465 INFO [host.docker.internal:5565] แตะไอเทม idx=0 @(285,170)
+2025-10-28 08:16:42,329 INFO [host.docker.internal:5615] [poll] num=2 vs prev_cur=2 | diff=0.000 digit None→None
+2025-10-28 08:16:42,330 INFO [host.docker.internal:5615] ผล: ล้มเหลว (no change within 0.40s)
+2025-10-28 08:16:42,331 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:16:42,433 INFO [host.docker.internal:5615] stage=upgrade item_idx=6 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:16:42,435 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:16:43,554 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:16:43,556 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:44,095 INFO [host.docker.internal:5565] stage=insert item_idx=6 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:16:44,097 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=0 @(285,170)
+2025-10-28 08:16:45,346 INFO [INSERT] click at (583,613) score=0.907 thr=0.86
+2025-10-28 08:16:47,993 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.380 thr=0.85)
+2025-10-28 08:16:48,316 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:16:48,418 INFO [host.docker.internal:5565] stage=inspect item_idx=6 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:16:49,093 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.951 (thr=0.83)
+2025-10-28 08:16:50,442 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=2 | diff=0.012 digit None→4
+2025-10-28 08:16:50,443 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:16:50,545 INFO [host.docker.internal:5615] stage=upgrade item_idx=6 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:16:50,546 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:16:50,693 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:16:50,695 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:16:50,797 INFO [host.docker.internal:5565] stage=upgrade item_idx=6 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:16:50,798 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:16:51,575 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:16:51,577 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:51,710 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:16:51,712 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:55,789 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.229 thr=0.85)
+2025-10-28 08:16:55,852 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.271 thr=0.85)
+2025-10-28 08:16:56,739 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.938 (thr=0.83)
+2025-10-28 08:16:56,850 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.970 (thr=0.83)
+2025-10-28 08:16:58,049 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.028 digit None→None
+2025-10-28 08:16:58,051 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:16:58,054 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=3 | diff=0.036 digit 4→None
+2025-10-28 08:16:58,056 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:16:58,152 INFO [host.docker.internal:5565] stage=upgrade item_idx=6 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:16:58,154 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:16:58,159 INFO [host.docker.internal:5615] stage=upgrade item_idx=6 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:16:58,161 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:16:59,126 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:16:59,128 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:16:59,299 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.016 thr=0.85)
+2025-10-28 08:16:59,302 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:03,383 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.075 thr=0.85)
+2025-10-28 08:17:03,636 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.372 thr=0.85)
+2025-10-28 08:17:04,500 INFO [ICON-PLUS OCR] text='4' → level≈+4
+2025-10-28 08:17:04,746 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:17:05,521 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.027 digit None→None
+2025-10-28 08:17:05,522 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:17:05,624 INFO [host.docker.internal:5565] stage=upgrade item_idx=6 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:17:05,625 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:17:05,976 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=4 | diff=0.298 digit None→None
+2025-10-28 08:17:05,978 INFO [host.docker.internal:5615] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:17:05,979 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:17:06,082 INFO [host.docker.internal:5615] stage=pick item_idx=7 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:06,083 INFO [host.docker.internal:5615] แตะไอเทม idx=1 @(345,170)
+2025-10-28 08:17:06,561 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:17:06,563 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:08,699 INFO [host.docker.internal:5615] stage=insert item_idx=7 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:08,700 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=1 @(345,170)
+2025-10-28 08:17:09,598 INFO [INSERT] click at (602,551) score=0.976 thr=0.86
+2025-10-28 08:17:10,650 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.033 thr=0.85)
+2025-10-28 08:17:11,610 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.944 (thr=0.83)
+2025-10-28 08:17:12,555 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:17:12,657 INFO [host.docker.internal:5615] stage=inspect item_idx=7 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:12,752 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.028 digit None→None
+2025-10-28 08:17:12,754 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:17:12,755 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:17:12,856 INFO [host.docker.internal:5565] stage=upgrade item_idx=6 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:17:12,858 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:17:13,759 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:17:13,761 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:14,689 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:17:14,691 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:17:14,793 INFO [host.docker.internal:5615] stage=upgrade item_idx=7 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:17:14,794 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:17:15,824 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:17:15,826 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:17,822 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.140 thr=0.85)
+2025-10-28 08:17:18,653 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.923 (thr=0.83)
+2025-10-28 08:17:19,622 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=3 | diff=0.030 digit None→None
+2025-10-28 08:17:19,998 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.163 thr=0.85)
+2025-10-28 08:17:20,624 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:17:20,990 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.953 (thr=0.83)
+2025-10-28 08:17:21,468 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:17:22,151 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=1 | diff=0.017 digit None→None
+2025-10-28 08:17:22,152 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:17:22,254 INFO [host.docker.internal:5615] stage=upgrade item_idx=7 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:17:22,255 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:17:22,503 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=3 | diff=0.045 digit None→None
+2025-10-28 08:17:22,504 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:17:22,606 INFO [host.docker.internal:5565] stage=upgrade item_idx=6 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:17:22,607 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:17:23,197 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:17:23,199 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:23,553 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:17:23,555 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:27,468 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.153 thr=0.85)
+2025-10-28 08:17:27,830 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.432 thr=0.85)
+2025-10-28 08:17:28,625 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:17:28,921 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:17:29,678 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=2 | diff=0.007 digit None→None
+2025-10-28 08:17:30,000 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=4 | diff=0.259 digit None→None
+2025-10-28 08:17:30,002 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:17:30,003 INFO [host.docker.internal:5565] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:17:30,005 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:17:30,106 INFO [host.docker.internal:5565] stage=pick item_idx=7 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:30,108 INFO [host.docker.internal:5565] แตะไอเทม idx=1 @(345,170)
+2025-10-28 08:17:30,774 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:17:31,652 INFO [ICON-PLUS BANK(gray)] level=+3 score=1.000 (thr=0.83)
+2025-10-28 08:17:32,766 INFO [host.docker.internal:5615] [poll] num=2 vs prev_cur=2 | diff=0.007 digit None→None
+2025-10-28 08:17:32,768 INFO [host.docker.internal:5615] ผล: ล้มเหลว (no change within 0.40s)
+2025-10-28 08:17:32,837 INFO [host.docker.internal:5565] stage=insert item_idx=7 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:32,839 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=1 @(345,170)
+2025-10-28 08:17:32,870 INFO [host.docker.internal:5615] stage=upgrade item_idx=7 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:17:32,872 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:17:33,645 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:17:33,648 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:33,771 INFO [INSERT] click at (645,613) score=0.961 thr=0.86
+2025-10-28 08:17:36,963 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:17:37,065 INFO [host.docker.internal:5565] stage=inspect item_idx=7 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:37,888 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.180 thr=0.85)
+2025-10-28 08:17:38,835 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.947 (thr=0.83)
+2025-10-28 08:17:39,049 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:17:39,051 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:17:39,053 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:17:39,154 INFO [host.docker.internal:5565] stage=upgrade item_idx=7 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:17:39,156 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:17:39,938 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=2 | diff=0.028 digit None→7
+2025-10-28 08:17:39,939 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:17:39,941 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:17:40,042 INFO [host.docker.internal:5615] stage=upgrade item_idx=7 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:17:40,044 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:17:40,128 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:17:40,130 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:41,065 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:17:41,069 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:44,284 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:17:45,303 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.936 (thr=0.83)
+2025-10-28 08:17:45,349 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.147 thr=0.85)
+2025-10-28 08:17:46,417 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.057 digit None→None
+2025-10-28 08:17:46,423 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:17:46,424 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:17:46,525 INFO [host.docker.internal:5565] stage=upgrade item_idx=7 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:17:46,526 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:17:47,510 INFO [host.docker.internal:5615] [posttap] num=None vs prev_cur=3 | diff=0.024 digit 7→4
+2025-10-28 08:17:47,511 INFO [host.docker.internal:5615] [posttap] SUCCESS by ocr (+1) → new_cur=4
+2025-10-28 08:17:47,613 INFO [host.docker.internal:5615] stage=upgrade item_idx=7 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:17:47,614 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:17:47,661 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:17:47,663 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:48,452 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:17:48,454 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:51,700 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.276 thr=0.85)
+2025-10-28 08:17:52,488 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.969 (thr=0.83)
+2025-10-28 08:17:52,907 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.004 thr=0.85)
+2025-10-28 08:17:53,614 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.027 digit None→None
+2025-10-28 08:17:53,615 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:17:53,717 INFO [host.docker.internal:5565] stage=upgrade item_idx=7 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:17:53,719 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:17:53,740 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.974 (thr=0.83)
+2025-10-28 08:17:54,733 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:17:54,735 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:17:54,776 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=4 | diff=0.042 digit 4→None
+2025-10-28 08:17:54,778 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=5
+2025-10-28 08:17:54,779 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:17:54,781 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:17:54,884 INFO [host.docker.internal:5615] stage=pick item_idx=8 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:54,885 INFO [host.docker.internal:5615] แตะไอเทม idx=2 @(405,170)
+2025-10-28 08:17:57,476 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:17:57,578 INFO [host.docker.internal:5615] stage=insert item_idx=8 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:17:57,580 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=2 @(405,170)
+2025-10-28 08:17:58,546 INFO [INSERT] click at (663,551) score=0.985 thr=0.86
+2025-10-28 08:17:59,057 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.290 thr=0.85)
+2025-10-28 08:17:59,898 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.940 (thr=0.83)
+2025-10-28 08:18:01,107 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.029 digit None→None
+2025-10-28 08:18:01,109 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:18:01,211 INFO [host.docker.internal:5565] stage=upgrade item_idx=7 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:18:01,213 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:18:01,781 INFO [host.docker.internal:5615] stage=inspect item_idx=8 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:02,048 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:18:02,051 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:03,924 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:18:03,926 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:18:03,928 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:18:04,030 INFO [host.docker.internal:5615] stage=upgrade item_idx=8 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:18:04,031 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:18:04,788 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:18:04,791 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:06,338 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.100 thr=0.85)
+2025-10-28 08:18:07,159 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.920 (thr=0.83)
+2025-10-28 08:18:08,112 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=3 | diff=0.053 digit None→None
+2025-10-28 08:18:08,974 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.253 thr=0.85)
+2025-10-28 08:18:09,059 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:18:09,890 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.973 (thr=0.83)
+2025-10-28 08:18:09,929 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:18:10,937 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=3 | diff=0.078 digit None→None
+2025-10-28 08:18:10,939 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:18:11,021 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=1 | diff=0.010 digit None→None
+2025-10-28 08:18:11,023 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:18:11,040 INFO [host.docker.internal:5565] stage=upgrade item_idx=7 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:18:11,041 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:18:11,125 INFO [host.docker.internal:5615] stage=upgrade item_idx=8 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:18:11,126 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:18:11,929 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:18:11,931 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:11,994 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:18:11,997 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:15,965 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.390 thr=0.85)
+2025-10-28 08:18:16,093 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.383 thr=0.85)
+2025-10-28 08:18:16,902 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:18:17,009 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.970 (thr=0.83)
+2025-10-28 08:18:17,917 INFO [host.docker.internal:5565] [posttap] num=None vs prev_cur=4 | diff=0.234 digit None→None
+2025-10-28 08:18:17,918 INFO [host.docker.internal:5565] [posttap] SUCCESS by diff (+1) → new_cur=5
+2025-10-28 08:18:17,920 INFO [host.docker.internal:5565] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:18:18,021 INFO [host.docker.internal:5565] stage=pick item_idx=8 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:18,023 INFO [host.docker.internal:5565] แตะไอเทม idx=2 @(405,170)
+2025-10-28 08:18:18,116 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=2 | diff=0.012 digit None→7
+2025-10-28 08:18:18,117 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:18:18,118 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:18:18,219 INFO [host.docker.internal:5615] stage=upgrade item_idx=8 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:18:18,221 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:18:19,121 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:18:19,123 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:20,500 INFO [host.docker.internal:5565] stage=insert item_idx=8 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:20,502 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=2 @(405,170)
+2025-10-28 08:18:21,694 INFO [INSERT] click at (706,613) score=0.955 thr=0.86
+2025-10-28 08:18:23,122 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.105 thr=0.85)
+2025-10-28 08:18:23,954 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.926 (thr=0.83)
+2025-10-28 08:18:24,591 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:18:24,692 INFO [host.docker.internal:5565] stage=inspect item_idx=8 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:24,739 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=3 | diff=0.118 digit 7→None
+2025-10-28 08:18:24,740 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:18:24,741 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:18:24,842 INFO [host.docker.internal:5615] stage=upgrade item_idx=8 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:18:24,846 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:18:25,712 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.016 thr=0.85)
+2025-10-28 08:18:25,714 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:26,857 INFO [ICON-PLUS BANK(gray)] level=+1 score=1.000 (thr=0.83)
+2025-10-28 08:18:26,859 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=None
+2025-10-28 08:18:26,961 INFO [host.docker.internal:5565] stage=upgrade item_idx=8 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:18:26,962 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:18:27,997 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.068 thr=0.85)
+2025-10-28 08:18:28,000 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:29,770 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:18:30,416 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.880 (thr=0.83)
+2025-10-28 08:18:31,301 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=4 | diff=0.359 digit None→None
+2025-10-28 08:18:31,303 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=5
+2025-10-28 08:18:31,304 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:18:31,405 INFO [host.docker.internal:5615] stage=pick item_idx=9 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:31,407 INFO [host.docker.internal:5615] แตะไอเทม idx=3 @(465,170)
+2025-10-28 08:18:31,715 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:18:32,713 INFO [ICON-PLUS OCR] text='4' → level≈+4
+2025-10-28 08:18:33,716 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=0 | diff=0.082 digit None→None
+2025-10-28 08:18:33,717 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=1
+2025-10-28 08:18:33,719 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:18:33,820 INFO [host.docker.internal:5565] stage=upgrade item_idx=8 target=+5 base=0 succ=1 last_cur=1
+2025-10-28 08:18:33,822 INFO [host.docker.internal:5565] UPGRADE base=0 succ=1 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:18:34,158 INFO [host.docker.internal:5615] stage=insert item_idx=9 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:34,160 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=3 @(465,170)
+2025-10-28 08:18:34,637 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.059 thr=0.85)
+2025-10-28 08:18:34,639 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:35,308 INFO [INSERT] click at (725,551) score=0.982 thr=0.86
+2025-10-28 08:18:38,364 INFO [host.docker.internal:5615] stage=inspect item_idx=9 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:18:38,937 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.234 thr=0.85)
+2025-10-28 08:18:39,841 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.923 (thr=0.83)
+2025-10-28 08:18:40,339 INFO [ICON-PLUS BANK(gray)] level=+2 score=1.000 (thr=0.83)
+2025-10-28 08:18:40,341 INFO [host.docker.internal:5615] หลัง INSERT baseline level=1 digit=None
+2025-10-28 08:18:40,442 INFO [host.docker.internal:5615] stage=upgrade item_idx=9 target=+5 base=1 succ=0 last_cur=1
+2025-10-28 08:18:40,444 INFO [host.docker.internal:5615] UPGRADE base=1 succ=0 cur=1 (prev_cur=1) / target=+5
+2025-10-28 08:18:40,978 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=1 | diff=0.058 digit None→None
+2025-10-28 08:18:40,979 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:18:41,081 INFO [host.docker.internal:5565] stage=upgrade item_idx=8 target=+5 base=0 succ=2 last_cur=2
+2025-10-28 08:18:41,082 INFO [host.docker.internal:5565] UPGRADE base=0 succ=2 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:18:41,398 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:18:41,399 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:41,831 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.056 thr=0.85)
+2025-10-28 08:18:41,833 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:45,320 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.194 thr=0.85)
+2025-10-28 08:18:46,126 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.952 (thr=0.83)
+2025-10-28 08:18:46,282 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.318 thr=0.85)
+2025-10-28 08:18:47,075 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=1 | diff=0.120 digit None→None
+2025-10-28 08:18:47,076 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=2
+2025-10-28 08:18:47,177 INFO [host.docker.internal:5615] stage=upgrade item_idx=9 target=+5 base=1 succ=1 last_cur=2
+2025-10-28 08:18:47,179 INFO [host.docker.internal:5615] UPGRADE base=1 succ=1 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:18:47,364 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.979 (thr=0.83)
+2025-10-28 08:18:48,022 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.014 thr=0.85)
+2025-10-28 08:18:48,025 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:48,395 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.024 digit None→None
+2025-10-28 08:18:48,397 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:18:48,398 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:18:48,500 INFO [host.docker.internal:5565] stage=upgrade item_idx=8 target=+5 base=0 succ=3 last_cur=3
+2025-10-28 08:18:48,502 INFO [host.docker.internal:5565] UPGRADE base=0 succ=3 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:18:49,350 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.057 thr=0.85)
+2025-10-28 08:18:49,352 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:51,970 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.383 thr=0.85)
+2025-10-28 08:18:52,798 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.952 (thr=0.83)
+2025-10-28 08:18:53,779 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.292 thr=0.85)
+2025-10-28 08:18:54,016 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=2 | diff=0.028 digit None→None
+2025-10-28 08:18:54,018 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:18:54,019 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:18:54,120 INFO [host.docker.internal:5615] stage=upgrade item_idx=9 target=+5 base=1 succ=2 last_cur=3
+2025-10-28 08:18:54,122 INFO [host.docker.internal:5615] UPGRADE base=1 succ=2 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:18:54,803 INFO [ICON-PLUS BANK(gray)] level=+4 score=0.950 (thr=0.83)
+2025-10-28 08:18:54,944 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.015 thr=0.85)
+2025-10-28 08:18:54,947 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:55,766 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=3 | diff=0.014 digit None→None
+2025-10-28 08:18:56,581 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:18:57,333 INFO [ICON-PLUS BANK(gray)] level=+5 score=1.000 (thr=0.83)
+2025-10-28 08:18:58,045 INFO [host.docker.internal:5565] [poll] num=4 vs prev_cur=3 | diff=0.013 digit None→None
+2025-10-28 08:18:58,046 INFO [host.docker.internal:5565] [poll] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:18:58,148 INFO [host.docker.internal:5565] stage=upgrade item_idx=8 target=+5 base=0 succ=4 last_cur=4
+2025-10-28 08:18:58,150 INFO [host.docker.internal:5565] UPGRADE base=0 succ=4 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:18:58,910 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.060 thr=0.85)
+2025-10-28 08:18:58,911 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:18:59,119 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.110 thr=0.85)
+2025-10-28 08:18:59,816 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.927 (thr=0.83)
+2025-10-28 08:19:00,738 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=3 | diff=0.172 digit None→None
+2025-10-28 08:19:00,739 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=4
+2025-10-28 08:19:00,740 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:19:00,841 INFO [host.docker.internal:5615] stage=upgrade item_idx=9 target=+5 base=1 succ=3 last_cur=4
+2025-10-28 08:19:00,842 INFO [host.docker.internal:5615] UPGRADE base=1 succ=3 cur=4 (prev_cur=4) / target=+5
+2025-10-28 08:19:01,527 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.016 thr=0.85)
+2025-10-28 08:19:01,529 INFO [host.docker.internal:5615] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:19:02,808 INFO [ตรวจช่อง] ว่าง=True (เทมเพลต score=0.992 thr=0.85)
+2025-10-28 08:19:02,810 INFO [host.docker.internal:5565] ช่องว่างหลัง tap → ข้ามชิ้น
+2025-10-28 08:19:02,912 INFO [host.docker.internal:5565] stage=pick item_idx=9 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:02,913 INFO [host.docker.internal:5565] แตะไอเทม idx=3 @(465,170)
+2025-10-28 08:19:05,533 INFO [host.docker.internal:5565] stage=insert item_idx=9 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:05,534 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=3 @(465,170)
+2025-10-28 08:19:05,757 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.383 thr=0.85)
+2025-10-28 08:19:06,793 INFO [ICON-PLUS BANK(gray)] level=+6 score=0.966 (thr=0.83)
+2025-10-28 08:19:07,008 INFO [INSERT] click at (669,503) score=inf thr=0.86
+2025-10-28 08:19:08,195 INFO [host.docker.internal:5615] [posttap] num=5 vs prev_cur=4 | diff=0.236 digit None→None
+2025-10-28 08:19:08,197 INFO [host.docker.internal:5615] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=5
+2025-10-28 08:19:08,198 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป (instant)
+2025-10-28 08:19:08,300 INFO [host.docker.internal:5615] stage=pick item_idx=10 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:08,301 INFO [host.docker.internal:5615] แตะไอเทม idx=4 @(525,170)
+2025-10-28 08:19:10,453 INFO [host.docker.internal:5565] stage=inspect item_idx=9 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:11,003 INFO [host.docker.internal:5615] stage=insert item_idx=10 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:11,004 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=4 @(525,170)
+2025-10-28 08:19:12,222 INFO [INSERT] click at (780,551) score=0.981 thr=0.86
+2025-10-28 08:19:12,728 INFO [ICON-PLUS] ไม่พบระดับ
+2025-10-28 08:19:12,730 INFO [host.docker.internal:5565] หลัง INSERT baseline level=0 digit=4
+2025-10-28 08:19:12,731 INFO [host.docker.internal:5565] heartbeat items=0 target=+5
+2025-10-28 08:19:12,832 INFO [host.docker.internal:5565] stage=upgrade item_idx=9 target=+5 base=0 succ=0 last_cur=0
+2025-10-28 08:19:12,833 INFO [host.docker.internal:5565] UPGRADE base=0 succ=0 cur=0 (prev_cur=0) / target=+5
+2025-10-28 08:19:13,874 INFO [ตรวจช่อง] ว่าง=True (เทมเพลต score=0.992 thr=0.85)
+2025-10-28 08:19:13,876 INFO [host.docker.internal:5565] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้
+2025-10-28 08:19:13,978 INFO [host.docker.internal:5565] stage=pick item_idx=10 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:13,980 INFO [host.docker.internal:5565] แตะไอเทม idx=4 @(525,170)
+2025-10-28 08:19:15,001 INFO [host.docker.internal:5615] heartbeat items=0 target=+5
+2025-10-28 08:19:15,103 INFO [host.docker.internal:5615] stage=inspect item_idx=10 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:16,638 INFO [host.docker.internal:5565] stage=insert item_idx=10 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:16,639 INFO [host.docker.internal:5565] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=4 @(525,170)
+2025-10-28 08:19:16,954 INFO [ICON-PLUS BANK(gray)] level=+6 score=1.000 (thr=0.83)
+2025-10-28 08:19:16,956 INFO [host.docker.internal:5615] หลัง INSERT baseline level=5 digit=None
+2025-10-28 08:19:17,058 INFO [host.docker.internal:5615] stage=upgrade item_idx=10 target=+5 base=5 succ=0 last_cur=5
+2025-10-28 08:19:17,059 INFO [host.docker.internal:5615] UPGRADE base=5 succ=0 cur=5 (prev_cur=5) / target=+5
+2025-10-28 08:19:17,061 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป
+2025-10-28 08:19:17,163 INFO [host.docker.internal:5615] stage=pick item_idx=11 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:17,164 INFO [host.docker.internal:5615] แตะไอเทม idx=5 @(585,170)
+2025-10-28 08:19:17,711 INFO [INSERT] click at (840,613) score=0.952 thr=0.86
+2025-10-28 08:19:19,730 INFO [host.docker.internal:5615] stage=insert item_idx=11 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:19,731 INFO [host.docker.internal:5615] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx=5 @(585,170)
+2025-10-28 08:19:20,621 INFO [INSERT] click at (841,551) score=0.976 thr=0.86
+2025-10-28 08:19:20,634 INFO [host.docker.internal:5565] stage=inspect item_idx=10 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:22,296 INFO [ICON-PLUS BANK(gray)] level=+3 score=0.955 (thr=0.83)
+2025-10-28 08:19:22,298 INFO [host.docker.internal:5565] หลัง INSERT baseline level=2 digit=None
+2025-10-28 08:19:22,400 INFO [host.docker.internal:5565] stage=upgrade item_idx=10 target=+5 base=2 succ=0 last_cur=2
+2025-10-28 08:19:22,401 INFO [host.docker.internal:5565] UPGRADE base=2 succ=0 cur=2 (prev_cur=2) / target=+5
+2025-10-28 08:19:23,191 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.104 thr=0.85)
+2025-10-28 08:19:23,193 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:19:23,797 INFO [host.docker.internal:5615] stage=inspect item_idx=11 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:25,360 INFO [ICON-PLUS BANK(gray)] level=+6 score=1.000 (thr=0.83)
+2025-10-28 08:19:25,362 INFO [host.docker.internal:5615] หลัง INSERT baseline level=5 digit=None
+2025-10-28 08:19:25,464 INFO [host.docker.internal:5615] stage=upgrade item_idx=11 target=+5 base=5 succ=0 last_cur=5
+2025-10-28 08:19:25,466 INFO [host.docker.internal:5615] UPGRADE base=5 succ=0 cur=5 (prev_cur=5) / target=+5
+2025-10-28 08:19:25,467 INFO [host.docker.internal:5615] บรรลุเป้าหมาย +5 → ไปชิ้นถัดไป
+2025-10-28 08:19:25,469 INFO [host.docker.internal:5615] SWIPE after 6 items → (270,220)→(270,145) ms=800
+2025-10-28 08:19:27,055 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.098 thr=0.85)
+2025-10-28 08:19:27,932 INFO [ICON-PLUS OCR] text='4' → level≈+4
+2025-10-28 08:19:28,905 INFO [host.docker.internal:5565] [posttap] num=3 vs prev_cur=2 | diff=0.175 digit None→None
+2025-10-28 08:19:28,907 INFO [host.docker.internal:5565] [posttap] SUCCESS by numeric (+1 clamp) → new_cur=3
+2025-10-28 08:19:29,009 INFO [host.docker.internal:5565] stage=upgrade item_idx=10 target=+5 base=2 succ=1 last_cur=3
+2025-10-28 08:19:29,010 INFO [host.docker.internal:5565] UPGRADE base=2 succ=1 cur=3 (prev_cur=3) / target=+5
+2025-10-28 08:19:29,952 INFO [ตรวจช่อง] ว่าง=False (เทมเพลต score=0.098 thr=0.85)
+2025-10-28 08:19:29,953 INFO [host.docker.internal:5565] UPGRADE: click upgrade_btn @(844,626)
+2025-10-28 08:19:31,365 INFO [host.docker.internal:5615] stage=pick item_idx=12 target=+5 base=None succ=0 last_cur=None
+2025-10-28 08:19:31,366 INFO [host.docker.internal:5615] แตะไอเทม idx=0 @(285,170)

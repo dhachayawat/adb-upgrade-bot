@@ -306,11 +306,9 @@ def api_device_weblogs(device_id: str):
     init_api()
     lines = int(request.args.get("lines", "400") or 400)
     try:
+        # ใหม่ (ไม่ fallback)
         data = LOG.web_dump(lines=lines, device=device_id)
-        if not data:
-            # fallback: ไม่กรอง — เพื่อให้เห็นว่าจริง ๆ มีล็อกไหม
-            data = LOG.web_dump(lines=lines, device=None)
-        return jsonify(data)
+        return jsonify(data or [])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

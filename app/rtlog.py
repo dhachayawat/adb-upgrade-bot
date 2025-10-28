@@ -174,8 +174,7 @@ def web_dump(lines: int = 400, device: Optional[str] = None) -> List[Dict[str, A
         buf = list(_web_buf)
     out: List[Dict[str, Any]] = buf
     if device:
-        filtered = [x for x in buf if _dev_match_flexible(x.get("dev", ""), device)]
-        out = filtered if filtered else buf
+        out = [x for x in buf if _dev_match_flexible(x.get("dev", ""), device)]
     if lines > 0:
         out = out[-lines:]
     return out
