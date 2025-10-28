@@ -24,8 +24,46 @@ bp_api = Blueprint("config_api", __name__, url_prefix="/api")
 _cfg_store: Optional[ConfigStore] = None
 _mgr: Optional[DeviceManager] = None
 _summary: Optional[SummaryStore] = None
-_weblog_q = None
+_weblog_q = None  # multiprocessing.Queue สำหรับ rich-web logs
 
+# -------------------- helper: ensure weblog clear is available --------------------
+def _ensure_web_clear():
+    """
+    บางเวอร์ชันของ rtlog อาจไม่มี web_clear() จึง monkeypatch ให้
+    ใช้บัฟเฟอร์ในหน่วยความจำของ rtlog (_web_buf/_web_lock) เพื่อล้างตาม device
+    """
+    if hasattr(LOG, "web_clear"):
+        return
+    from collections import deque
+    def _sanitize(s: str) -> str:
+        try:
+            return LOG._sanitize_dev_id(s)  # type: ignore[attr-defined]
+        except Exception:
+            return str(s).replace(":", "-").replace("/", "_").replace("\\", "_").strip()
+
+    def _web_clear(device: Optional[str] = None) -> int:
+        try:
+            buf = getattr(LOG, "_web_buf", None)
+            lock = getattr(LOG, "_web_lock", None)
+            if buf is None or lock is None:
+                return 0
+            removed = 0
+            with lock:
+                if device:
+                    safe = _sanitize(str(device))
+                    new_list = [x for x in list(buf) if _sanitize(x.get("dev", "")) != safe]
+                    removed = len(buf) - len(new_list)
+                    new_deque = deque(new_list, maxlen=buf.maxlen)
+                    buf.clear(); buf.extend(new_deque)
+                else:
+                    removed = len(buf)
+                    buf.clear()
+            return removed
+        except Exception:
+            return 0
+    setattr(LOG, "web_clear", _web_clear)
+
+# -------------------- init api / device manager --------------------
 def init_api(step_fn=None) -> None:
     global _cfg_store, _mgr, _summary, _weblog_q
     if _cfg_store is None:
@@ -33,17 +71,25 @@ def init_api(step_fn=None) -> None:
     if _summary is None:
         _summary = SummaryStore()
 
+    # ให้ endpoint ล้าง rich log ใช้ได้เสมอ
+    _ensure_web_clear()
+
     if _mgr is None:
         if RUN_MODE == "mp":
+            from multiprocessing import Queue
             _mgr = DeviceManager(_cfg_store)
+            # สร้างคิว ส่งเข้า rtlog แล้วค่อย start bridge
             if _weblog_q is None:
                 try:
-                    _weblog_q = LOG.start_mp_bridge()
+                    _weblog_q = Queue(maxsize=2000)
+                    LOG.set_weblog_queue(_weblog_q)
+                    LOG.start_mp_bridge()
                 except Exception as e:
                     LOG.w(f"[config_api] start_mp_bridge failed: {e}")
                     _weblog_q = None
+            # ส่งคิวให้ manager
             try:
-                if hasattr(_mgr, "set_weblog_queue"):
+                if hasattr(_mgr, "set_weblog_queue") and _weblog_q is not None:
                     _mgr.set_weblog_queue(_weblog_q)
             except Exception as e:
                 LOG.w(f"[config_api] set_weblog_queue failed: {e}")
@@ -58,11 +104,15 @@ def init_api(step_fn=None) -> None:
         if RUN_MODE == "mp" and hasattr(_mgr, "set_weblog_queue"):
             try:
                 if _weblog_q is None:
-                    _weblog_q = LOG.start_mp_bridge()
+                    from multiprocessing import Queue
+                    _weblog_q = Queue(maxsize=2000)
+                    LOG.set_weblog_queue(_weblog_q)
+                    LOG.start_mp_bridge()
                 _mgr.set_weblog_queue(_weblog_q)
             except Exception as e:
                 LOG.w(f"[config_api] set_weblog_queue (post-init) failed: {e}")
 
+# -------------------- endpoints --------------------
 @bp_api.get("/devices")
 def api_devices():
     init_api()
@@ -270,16 +320,15 @@ def api_device_logs(device_id: str):
     if not ctrl:
         return jsonify({"error":"not found"}), 404
 
-    # 1) ลองอ่านจากไฟล์ต่อ-device ก่อน
+    # 1) อ่านจากไฟล์ต่อ-device ก่อน
     try:
-        from . import rtlog as LOG
         txt = LOG.get_device_text(device_id, lines=lines)
         if txt.strip():
             return jsonify({"text": txt})
     except Exception:
         pass
 
-    # 2) พยายามดึง log จาก controller ถ้ามี
+    # 2) ถ้ามีตัวอ่านจาก controller
     try:
         if hasattr(ctrl, "log_tail"):
             text = ctrl.log_tail(lines)
@@ -291,22 +340,20 @@ def api_device_logs(device_id: str):
     except Exception:
         pass
 
-    # 3) Fallback: global text buffer
-    text = LOG.get_text(lines)
+    # 3) Fallback: global app.log
+    text = LOG.read_all(lines)
     return jsonify({"text": text})
-
 
 @bp_api.get("/devices/<device_id>/weblogs")
 def api_device_weblogs(device_id: str):
     """
     คืน rich logs (HTML) สำหรับอุปกรณ์ที่ระบุ
     รูปแบบ: [{ts, dev, html, lvl}, ...]
-    - มี fallback: ถ้ากรองแล้วว่าง จะคืนทั้งบัฟเฟอร์เพื่อช่วยดีบัก
+    - ไม่มี fallback รวมทั้งกอง
     """
     init_api()
     lines = int(request.args.get("lines", "400") or 400)
     try:
-        # ใหม่ (ไม่ fallback)
         data = LOG.web_dump(lines=lines, device=device_id)
         return jsonify(data or [])
     except Exception as e:
@@ -334,7 +381,8 @@ def api_summary():
 
 @bp_api.get("/logs")
 def api_logs():
-    return jsonify({"text": LOG.get_text(400)})
+    # global logs (tail)
+    return jsonify({"text": LOG.read_all(400)})
 
 @bp_api.post("/devices/<device_id>/snap")
 def api_device_snap(device_id: str):

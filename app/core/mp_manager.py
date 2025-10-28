@@ -125,7 +125,11 @@ class MPDeviceManager:
 
             LOG.i(f"[{dev_id}] MP worker start (target=+{target_level})")
             ctrl = Controller(device=dev_serial, target_level=target_level,
-                              stop_event=stop_ev, pause_event=pause_ev)
+                  stop_event=stop_ev, pause_event=pause_ev)
+            setattr(ctrl, "id", dev_id)  # บังคับให้มี id ใช้ใน worker_step และส่วนอื่น
+
+            # ✅ จุดนี้แหละที่ใส่บรรทัด debug ยืนยันค่า id
+            LOG.dev_info(dev_id, f"MP worker start (target=+{target_level}) / ctrl.id={getattr(ctrl,'id',None)} / dev_serial={dev_serial}")
             worker_loop(ctrl, step_fn=worker_step, sleep_sec=sleep_sec)
         except KeyboardInterrupt:
             pass

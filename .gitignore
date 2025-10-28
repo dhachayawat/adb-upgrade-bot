@@ -1,1 +1,27 @@
 cache/*
+logs/*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node / Next.js / NestJS
+node_modules/
+.next/
+dist/
+coverage/
+
+# PHP / Laravel
+/vendor/
+storage/
+bootstrap/cache/
+.env
+.env.*
+*.log
+
+# Python (ถ้ามี)
+__pycache__/
+*.pyc
+.venv/

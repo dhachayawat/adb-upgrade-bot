@@ -1,260 +1,342 @@
-# app/rtlog.py
-import logging, sys, os, time, threading, queue, io
-from logging.handlers import RotatingFileHandler
-from collections import deque
-from threading import Lock
-from typing import Optional, List, Dict, Any
+# rtlog.py  — per-device logs use canonical "id" (e.g., app.log.d1)
+# -------------------------------------------------------------------
+from __future__ import annotations
 
-# --- config ---
+import os
+import sys
+import io
+import time
+import threading
+import logging
+import queue as _queue
+from collections import deque
+from logging.handlers import RotatingFileHandler
+from typing import Optional, Dict, Any, List
+
+# ---------------------- Global config ----------------------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-LOG_DIR   = os.getenv("LOG_DIR", "/app/logs")
+LOG_DIR = os.getenv("LOG_DIR", "./logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# ---------- root logger -> stdout + file (รวมทุกอย่าง) ----------
-_logger = logging.getLogger("adb-upgrade-bot")
-_logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-_logger.propagate = False
+MAX_BYTES = int(os.getenv("LOG_ROTATE_MAX_BYTES", str(5_000_000)))
+BACKUP_COUNT = int(os.getenv("LOG_ROTATE_BACKUP_COUNT", "3"))
 
-for h in list(_logger.handlers):
-    _logger.removeHandler(h)
+# trace helper (toggle with LOG_TRACE_DEVID=1)
+_LOG_TRACE_DEVID = os.getenv("LOG_TRACE_DEVID", "0") == "1"
+def _trace(msg: str):
+    if _LOG_TRACE_DEVID:
+        _root.info(f"[trace-device-id] {msg}")
 
-fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+# ---------------------- Root logger ------------------------
+_root = logging.getLogger("adb-upgrade-bot")
+_root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+_root.propagate = False
 
-sh = logging.StreamHandler(sys.stdout)
-sh.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-sh.setFormatter(fmt)
-_logger.addHandler(sh)
+for h in list(_root.handlers):
+    _root.removeHandler(h)
 
-fh = RotatingFileHandler(os.path.join(LOG_DIR, "app.log"),
-                         maxBytes=5_000_000, backupCount=3, encoding="utf-8")
-fh.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-fh.setFormatter(fmt)
-_logger.addHandler(fh)
+_fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 
-# ---------- simple API (text logs) ----------
-def i(msg): _logger.info(msg)
-def w(msg): _logger.warning(msg)
-def e(msg): _logger.error(msg)
+_sh = logging.StreamHandler(sys.stdout)
+_sh.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+_sh.setFormatter(_fmt)
+_root.addHandler(_sh)
 
-# =========================
-# In-memory TEXT log buffer (global)
-# =========================
-_text_buf = deque(maxlen=4000)
-_text_lock = Lock()
+_fh = RotatingFileHandler(
+    os.path.join(LOG_DIR, "app.log"),
+    maxBytes=MAX_BYTES,
+    backupCount=BACKUP_COUNT,
+    encoding="utf-8",
+)
+_fh.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+_fh.setFormatter(_fmt)
+_root.addHandler(_fh)
 
-class _BufHandler(logging.Handler):
-    def emit(self, record):
-        try:
-            line = fmt.format(record)
-            with _text_lock:
-                _text_buf.append(line)
-        except Exception:
-            pass
+# --------------------- Canonical device-id registry -----------------
+# จุดประสงค์: map alias/serial/host:port => canonical id (เช่น "d1")
+# ตัวอย่าง: {"d1":"d1","ดาบ100":"d1","host.docker.internal:5565":"d1"}
+_CANON_LOCK = threading.Lock()
+_CANON: Dict[str, str] = {}   # key(normalized) -> canonical_id("d1")
 
-_logger.addHandler(_BufHandler())
+def _norm_key(s: str) -> str:
+    return (s or "").strip().lower().replace("\\", "_").replace("/", "_")
 
-def get_text(lines: int = 400) -> str:
-    with _text_lock:
-        return "\n".join(list(_text_buf)[-max(0, lines):])
+def _sanitize_dev_id(s: str) -> str:
+    # ใช้ทำชื่อไฟล์เท่านั้น (ไม่กระทบ canonical id ซึ่งควรจะเป็น "d1")
+    return str(s).replace(":", "-").replace("/", "_").replace("\\", "_").strip()
 
-# =========================
-# Per-device FILE loggers
-# =========================
-_SAFE_RE = __import__("re").compile(r"[^a-zA-Z0-9_.-]+")
+def set_canonical_map(mapping: Dict[str, str]) -> None:
+    """ตั้งค่า mapping ครั้งเดียวเป็นก้อน (เช่นจาก device.json)"""
+    with _CANON_LOCK:
+        _CANON.clear()
+        for k, v in (mapping or {}).items():
+            if not k or not v:
+                continue
+            _CANON[_norm_key(k)] = str(v).strip()
+        # ใส่ self-map ของทุก canonical id ด้วย
+        for v in list(set(_CANON.values())):
+            _CANON[_norm_key(v)] = v
+    _trace(f"set_canonical_map: {len(_CANON)} entries")
 
-def _safe_dev(dev_id: str) -> str:
-    s = (_SAFE_RE.sub("-", str(dev_id or "dev")).strip("-")) or "dev"
-    return s[:80]
+def register_device(canonical_id: str, *, name: str = None, device: str = None, serial: str = None, alias: str = None, host: str = None, port: int = None) -> None:
+    """ลงทะเบียนอุปกรณ์ทีละตัว"""
+    can = str(canonical_id).strip()
+    with _CANON_LOCK:
+        if can:
+            _CANON[_norm_key(can)] = can
+        for k in [name, device, serial, alias, (f"{host}:{port}" if host and port is not None else None), host]:
+            if k:
+                _CANON[_norm_key(str(k))] = can
+    _trace(f"register_device: can={can} keys={ [k for k in [name, device, serial, alias, host] if k] }")
 
-_dev_loggers: Dict[str, logging.Logger] = {}
-_dev_lock = Lock()
+def canonical_id_of(device_key: Optional[str]) -> Optional[str]:
+    """แปลงค่าใด ๆ ให้เป็น canonical id ถ้ามีใน registry"""
+    if not device_key:
+        return None
+    key = _norm_key(str(device_key))
+    with _CANON_LOCK:
+        can = _CANON.get(key)
+    _trace(f"canonical_id_of: in={device_key!r} -> {can!r}")
+    return can
 
-def device_log_path(dev_id: str) -> str:
-    return os.path.join(LOG_DIR, f"app.log.{_safe_dev(dev_id)}")
+# --------------------- Device file loggers -----------------
+_dev_handlers_lock = threading.Lock()
+_dev_handlers: Dict[str, logging.Logger] = {}
 
-def _get_dev_logger(dev_id: str) -> logging.Logger:
-    """
-    คืน logger เฉพาะ device (เขียนลง logs/app.log.{dev_id})
-    - ใช้ RotatingFileHandler 3 ไฟล์เหมือน global
-    - ไม่ propagate กลับ root
-    """
-    sid = _safe_dev(dev_id)
-    with _dev_lock:
-        lg = _dev_loggers.get(sid)
-        if lg:
-            return lg
-        lg = logging.getLogger(f"adb-upgrade-bot.dev.{sid}")
+def _device_log_path(device_id: str) -> str:
+    return os.path.join(LOG_DIR, f"app.log.{device_id}")
+
+def _get_dev_logger(device_id: str) -> logging.Logger:
+    """logger ต่ออุปกรณ์ (ใช้ id อย่างเดียว)"""
+    if not device_id:
+        return _root  # กันพลาด: ถ้าไม่มี id เขียนลง global
+
+    safe_id = _sanitize_dev_id(str(device_id))
+    with _dev_handlers_lock:
+        if safe_id in _dev_handlers:
+            return _dev_handlers[safe_id]
+
+        lg = logging.getLogger(f"adb-upgrade-bot.dev.{safe_id}")
         lg.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
         lg.propagate = False
         for h in list(lg.handlers):
             lg.removeHandler(h)
-        path = device_log_path(sid)
-        fh = RotatingFileHandler(path, maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+
+        fh = RotatingFileHandler(
+            _device_log_path(safe_id),
+            maxBytes=MAX_BYTES,
+            backupCount=BACKUP_COUNT,
+            encoding="utf-8",
+        )
         fh.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-        fh.setFormatter(fmt)
+        fh.setFormatter(_fmt)
         lg.addHandler(fh)
-        _dev_loggers[sid] = lg
+
+        _dev_handlers[safe_id] = lg
         return lg
 
-def dev_info(dev_id: str, msg: str):  _get_dev_logger(dev_id).info(msg)
-def dev_warn(dev_id: str, msg: str):  _get_dev_logger(dev_id).warning(msg)
-def dev_error(dev_id: str, msg: str): _get_dev_logger(dev_id).error(msg)
+# --------------------- Public: plain log (global) ----------
+def i(msg: str): _root.info(msg)
+def w(msg: str): _root.warning(msg)
+def e(msg: str): _root.error(msg)
 
-def get_device_text(dev_id: str, lines: int = 400) -> str:
-    """
-    อ่าน tail ของไฟล์ logs/app.log.{dev_id}
-    ถ้าไฟล์ไม่พบ → คืนสตริงว่าง
-    """
-    path = device_log_path(dev_id)
-    if not os.path.exists(path):
+# --------------------- Public: plain log (per device) ------
+def dev_info(device_id: str, msg: str):
+    key = (device_id or "").strip()
+    if not key or ":" in key or "." in key:
+        key = "global"
+    _get_dev_logger(key).info(msg)
+
+def dev_warn(device_id: str, msg: str):
+    key = (device_id or "").strip()
+    if not key or ":" in key or "." in key:
+        key = "global"
+    _get_dev_logger(key).warning(msg)
+
+def dev_error(device_id: str, msg: str):
+    key = (device_id or "").strip()
+    if not key or ":" in key or "." in key:
+        key = "global"
+    _get_dev_logger(key).error(msg)
+
+# --------------------- Rich web log buffer -----------------
+_WEB_BUF_MAX = int(os.getenv("WEBLOG_BUFFER_MAX", "5000"))
+_web_buf: deque = deque(maxlen=_WEB_BUF_MAX)
+_web_lock = threading.Lock()
+
+def web(device_id: Optional[str], html: str, level: str = "INFO"):
+    key = (device_id or "").strip()
+    if not key or ":" in key or "." in key:
+        key = "global"
+    ent = {"ts": time.time(), "lvl": level.upper(), "dev": key, "html": html}
+    with _web_lock:
+        _web_buf.append(ent)
+    _get_dev_logger(key).info("[WEB] " + level.upper() + " " + html)
+
+
+def web_info(device_key: Optional[str], html: str):  web(device_key, html, "INFO")
+def web_warn(device_key: Optional[str], html: str):  web(device_key, html, "WARN")
+def web_error(device_key: Optional[str], html: str): web(device_key, html, "ERROR")
+
+def web_dump(lines: int = 200, device: Optional[str] = None) -> List[Dict[str, Any]]:
+    with _web_lock:
+        buf = list(_web_buf)
+
+    if device:
+        want = _sanitize_dev_id(str(device))
+        out = [x for x in buf if _sanitize_dev_id(x.get("dev","")) == want]
+    else:
+        out = buf
+
+    return out[-lines:] if lines and lines > 0 else out
+
+def web_clear(device: Optional[str] = None) -> int:
+    """ล้าง rich-log ทั้งหมดหรือเฉพาะ canonical id ที่ระบุ"""
+    removed = 0
+    with _web_lock:
+        if device:
+            can = canonical_id_of(device) or str(device)
+            safe = _sanitize_dev_id(can)
+            old = len(_web_buf)
+            remain = [x for x in list(_web_buf) if _sanitize_dev_id(x.get("dev","")) != safe]
+            removed = old - len(remain)
+            _web_buf.clear(); _web_buf.extend(remain)
+        else:
+            removed = len(_web_buf); _web_buf.clear()
+    return removed
+
+# --------------------- Readers (plain files) ----------------
+def read_all(lines: int = 200) -> str:
+    return _tail_file(os.path.join(LOG_DIR, "app.log"), lines)
+
+def get_device_text(device_id: str, lines: int = 200) -> str:
+    if not device_id:
         return ""
+    path = _device_log_path(_sanitize_dev_id(str(device_id)))
+    return _tail_file(path, lines)
+
+def _tail_file(path: str, lines: int) -> str:
+    if not os.path.exists(path): return ""
     try:
-        # tail แบบง่าย ไม่โหลดทั้งไฟล์
         with open(path, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            chunk = 64 * 1024
-            data = bytearray()
-            while len(data) < 512 * 1024 and f.tell() > 0 and data.count(b"\n") < lines + 4:
-                step = min(chunk, f.tell())
-                f.seek(-step, os.SEEK_CUR)
-                data.extend(f.read(step))
-                f.seek(-step, os.SEEK_CUR)
-                if f.tell() == 0:
-                    break
-            text = data.decode("utf-8", errors="replace")
-            rows = text.splitlines()
-            return "\n".join(rows[-lines:])
+            return _tail_bytes(f, lines).decode("utf-8", errors="ignore")
     except Exception:
-        # ถ้าพลาดก็ fallback แบบอ่านทั้งหมด (ไฟล์เล็ก)
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                rows = f.read().splitlines()
-                return "\n".join(rows[-lines:])
+            with open(path, "r", encoding="utf-8", errors="ignore") as f2:
+                return "".join(f2.readlines()[-lines:])
         except Exception:
             return ""
 
-# =========================
-# In-memory WEB-HTML log buffer (สำหรับ Web UI)
-# =========================
-_WEB_MAX = int(os.getenv("WEB_LOG_MAXLEN", "4000"))
-_web_buf: deque = deque(maxlen=_WEB_MAX)
-_web_lock = Lock()
+def _tail_bytes(f, lines: int) -> bytes:
+    if lines <= 0: return b""
+    avg_line_len = 120
+    to_read = lines * avg_line_len
+    f.seek(0, io.SEEK_END)
+    file_size = f.tell()
+    offset = max(file_size - to_read, 0)
+    f.seek(offset)
+    data = f.read()
+    parts = data.splitlines()
+    return b"\n".join(parts[-lines:])
 
-def web(dev_id: str, html: str, level: str = "INFO") -> None:
-    """
-    เพิ่ม HTML log ลงบัฟเฟอร์สำหรับ Web UI + เขียนลงไฟล์ต่อ-device
-    """
-    try:
-        level = (level or "INFO").upper()
-        if level not in ("INFO", "WARN", "ERROR"):
-            level = "INFO"
-        rec = {"ts": time.time(), "dev": dev_id or "", "html": html or "", "lvl": level}
-        with _web_lock:
-            _web_buf.append(rec)
-        # duplicate ลงไฟล์ต่อ-device ในรูปแบบอ่านง่าย
-        msg = f"[WEB] {level} {html}"
-        if level == "INFO":   dev_info(dev_id, msg)
-        elif level == "WARN": dev_warn(dev_id, msg)
-        else:                 dev_error(dev_id, msg)
-    except Exception as ex:
-        _logger.warning(f"[rtlog.web] fail: {ex}; msg={html}")
+# -------- REPLACE THIS FUNCTION IN app/rtlog.py --------
+# rtlog.py
+def device_key(src=None, *, alias=None, serial=None, host=None, port=None) -> str:
+    # --- force id only ---
+    if src is not None:
+        dev_id = getattr(src, "id", None)
+        if dev_id:
+            return _sanitize_dev_id(str(dev_id))
+    # ไม่สนใจ alias/serial/host:port แล้ว
+    return "global"
 
-def _dev_match_flexible(dev: str, want: str) -> bool:
-    if not want:
-        return True
-    a = (dev or "").strip().lower()
-    b = (want or "").strip().lower()
-    if not a or not b:
-        return False
-    return a == b or (b in a) or a.endswith(b) or b.endswith(a)
 
-def web_dump(lines: int = 400, device: Optional[str] = None) -> List[Dict[str, Any]]:
-    with _web_lock:
-        buf = list(_web_buf)
-    out: List[Dict[str, Any]] = buf
-    if device:
-        out = [x for x in buf if _dev_match_flexible(x.get("dev", ""), device)]
-    if lines > 0:
-        out = out[-lines:]
-    return out
+def _dev_match_flexible(a: str, b: str) -> bool:
+    return _sanitize_dev_id(a) == _sanitize_dev_id(b)
 
-def web_clear(device: Optional[str] = None) -> int:
-    with _web_lock:
-        if not device:
-            n = len(_web_buf); _web_buf.clear(); return n
-        old = list(_web_buf)
-        remain = [x for x in old if not _dev_match_flexible(x.get("dev",""), device)]
-        _web_buf.clear()
-        for x in remain[-_WEB_MAX:]:
-            _web_buf.append(x)
-        return len(old) - len(remain)
+# ====================== Multiprocess WebLog Bridge ======================
+_MP_Q = None
+_MP_THREAD = None
+_MP_STOP = threading.Event()
 
-def web_info(dev_id: str, html: str):  web(dev_id, html, "INFO")
-def web_warn(dev_id: str, html: str):  web(dev_id, html, "WARN")
-def web_error(dev_id: str, html: str): web(dev_id, html, "ERROR")
+def set_weblog_queue(q):
+    global _MP_Q
+    _MP_Q = q
 
-# =========================
-# MP Bridge (optional; สำหรับ RUN_MODE=mp)
-# =========================
-_mp_queue: Optional["queue.Queue"] = None
-_mp_consumer_thr: Optional[threading.Thread] = None
-
-def _consumer():
-    global _mp_queue
-    while True:
+def _mp_bridge_loop():
+    while not _MP_STOP.is_set():
+        if _MP_Q is None:
+            time.sleep(0.2); continue
         try:
-            item = _mp_queue.get()
-            if item is None:
-                break
-            if isinstance(item, dict):
-                ts = float(item.get("ts", time.time()))
-                dev = str(item.get("dev", ""))
-                html = str(item.get("html", ""))
-                lvl = str(item.get("lvl", "INFO")).upper()
-                rec = {"ts": ts, "dev": dev, "html": html, "lvl": lvl if lvl in ("INFO","WARN","ERROR") else "INFO"}
-                with _web_lock:
-                    _web_buf.append(rec)
-                # เขียนลงไฟล์ต่อ-device ด้วย
-                msg = f"[WEB] {rec['lvl']} {rec['html']}"
-                if rec["lvl"] == "INFO":   dev_info(dev, msg)
-                elif rec["lvl"] == "WARN": dev_warn(dev, msg)
-                else:                      dev_error(dev, msg)
-        except Exception:
-            _logger.exception("[rtlog] mp consumer error")
+            msg = _MP_Q.get(timeout=0.2)
+        except _queue.Empty:
+            continue
+        except Exception as ex:
+            _root.error(f"weblog bridge: queue error: {ex}")
+            time.sleep(0.2); continue
+
+        try:
+            if isinstance(msg, dict):
+                dev  = msg.get("dev") or msg.get("device") or msg.get("device_id") or ""
+                html = msg.get("html") or msg.get("msg") or ""
+                lvl  = (msg.get("lvl") or msg.get("level") or "INFO").upper()
+            else:
+                parts = list(msg)
+                dev  = parts[0] if len(parts) > 0 else ""
+                html = parts[1] if len(parts) > 1 else ""
+                lvl  = str(parts[2]).upper() if len(parts) > 2 else "INFO"
+            web(dev, html, lvl)
+        except Exception as ex:
+            _root.error(f"weblog bridge: handle error: {ex}")
 
 def start_mp_bridge():
-    global _mp_queue, _mp_consumer_thr
-    if _mp_queue is not None:
-        return _mp_queue
-    try:
-        import multiprocessing as mp
-        _mp_queue = mp.Queue(maxsize=int(os.getenv("WEB_LOG_QUEUE_MAX", "2000")))
-        _mp_consumer_thr = threading.Thread(target=_consumer, name="rtlog-web-consumer", daemon=True)
-        _mp_consumer_thr.start()
-        _logger.info("[rtlog] mp bridge started")
-    except Exception:
-        _logger.exception("[rtlog] start_mp_bridge failed")
-        _mp_queue = None
-    return _mp_queue
+    global _MP_THREAD
+    if _MP_THREAD and _MP_THREAD.is_alive():
+        return True
+    if _MP_Q is None:
+        _root.warning("[rtlog] start_mp_bridge called but no queue set")
+        return False
+    _MP_STOP.clear()
+    _MP_THREAD = threading.Thread(target=_mp_bridge_loop, name="weblog-bridge", daemon=True)
+    _MP_THREAD.start()
+    _root.info("[rtlog] weblog bridge started")
+    return True
 
+def stop_mp_bridge():
+    global _MP_THREAD
+    if _MP_THREAD and _MP_THREAD.is_alive():
+        _MP_STOP.set()
+        try: _MP_THREAD.join(timeout=1.0)
+        except Exception: pass
+        _root.info("[rtlog] weblog bridge stopped")
+    return True
+
+# ====================== MP helpers (child process API) ======================
 def attach_mp_queue(q):
+    global _MP_Q
+    _MP_Q = q
+    try: _root.info("[rtlog] attach_mp_queue: ok")
+    except Exception: pass
+    return True
+
+def mp_web(device_key: str, html: str, level: str = "INFO"):
     try:
-        if q is None:
-            return
-        class _Proxy:
-            def __init__(self, qq): self.q = qq
-            def send(self, dev, html, lvl):
-                try:
-                    self.q.put({"ts": time.time(), "dev": dev or "", "html": html or "", "lvl": (lvl or "INFO").upper()}, block=False)
-                except Exception:
-                    pass
-        def _web_to_queue(dev_id: str, html: str, level: str = "INFO"):
-            try: _Proxy(q).send(dev_id, html, level)
-            except Exception: pass
-        globals()["web"] = _web_to_queue
-        globals()["web_info"] = lambda d,h: _web_to_queue(d,h,"INFO")
-        globals()["web_warn"] = lambda d,h: _web_to_queue(d,h,"WARN")
-        globals()["web_error"] = lambda d,h: _web_to_queue(d,h,"ERROR")
-    except Exception:
-        _logger.exception("[rtlog] attach_mp_queue failed")
+        if _MP_Q is not None:
+            _trace(f"mp_web(): queue-put dev={device_key!r} level={level}")
+            _MP_Q.put_nowait({"dev": device_key, "html": html, "lvl": level})
+            return True
+    except Exception as ex:
+        _trace(f"mp_web(): queue error={ex} → fallback")
+
+    if not device_key:
+        _trace("mp_web(): empty dev → GLOBAL")
+        _root.info(f"[WEB] {level.upper()} {html}")
+        return False
+
+    _trace(f"mp_web(): fallback dev={device_key!r}")
+    web(device_key, html, level)
+    return False
+
+def mp_web_info(device_key: str, html: str):  return mp_web(device_key, html, "INFO")
+def mp_web_warn(device_key: str, html: str):  return mp_web(device_key, html, "WARN")
+def mp_web_error(device_key: str, html: str): return mp_web(device_key, html, "ERROR")

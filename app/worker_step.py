@@ -76,11 +76,17 @@ def _lv_html(lv: Optional[int], target: int) -> str:
     return f'<span class="adb-lv" style="color:{col};font-weight:600">{_html.escape(txt)}</span>'
 
 def _log_web(dev_id: str, html_msg: str, level: str = "INFO"):
+    """
+    เขียน rich-log ต่อ device โดยใช้ mp_web เพื่อให้โปรเซสลูกส่งกลับมาที่โปรเซสหลัก
+    (mp_web จะ fallback เป็น web ถ้าไม่มีคิวแนบไว้)
+    """
     try:
-        from .rtlog import web as _rtlog_web
-        _rtlog_web(dev_id, html_msg, level.upper())
+        from .rtlog import mp_web as _rtlog_mp_web
+        _rtlog_mp_web(dev_id, html_msg, level.upper())
     except Exception:
-        LOG.i(f"[WEB-LOG fallback] {html_msg}")
+        # ตกมา plain log ต่อ-device กันหาย
+        LOG.dev_info(dev_id or "global", f"[WEB-LOG fallback] {html_msg}")
+
 
 # ===================== OCR / Image helpers =====================
 try:
@@ -131,12 +137,12 @@ def _click_insert_via_cv(adb: ADBAdapter, insert_roi_rect: Tuple[int, int, int, 
     if not pt:
         pt, sc = CV.match_center_multiscale(roi, CV.read_tpl("insert_alt.png"), thr=_CONF_INSERT_THR, scales=(0.9, 1.0, 1.1))
     if not pt:
-        LOG.w("[INSERT] หา/กดปุ่ม 'ใส่ลง' ไม่เจอใน ROI")
+        LOG.dev_warn(getattr(adb, "dev_id", "global"), "[INSERT] หา/กดปุ่ม 'ใส่ลง' ไม่เจอใน ROI")
         return False
 
     gx, gy = ox + pt[0], oy + pt[1]
-    LOG.i(f"[INSERT] click at ({gx},{gy}) score={sc:.3f} thr={_CONF_INSERT_THR}")
-    _log_web(getattr(adb, "dev_id", "dev"), f'INSERT: click @({gx},{gy})')
+    LOG.dev_info(getattr(adb, "dev_id", "global"), f"[INSERT] click at ({gx},{gy}) score={sc:.3f} thr={_CONF_INSERT_THR}")
+    _log_web(getattr(adb, "dev_id", "global"), f'INSERT: click @({gx},{gy})')
     adb.tap(gx, gy)
     return True
 
@@ -168,6 +174,7 @@ def _load_plus_template_bank(base_dir: Optional[str] = None) -> Dict[int, list]:
         if tpls:
             bank[n] = tpls
             loaded.append(f"+{n}:{len(tpls)}")
+    # ใช้ global log เพื่อไม่แตกไฟล์อุปกรณ์
     LOG.i("[plus-bank] loaded → " + (", ".join(loaded) if loaded else "(empty)"))
     return bank
 
@@ -195,6 +202,7 @@ def _build_plus_classifier(base_dir: Optional[str] = None) -> Dict[int, np.ndarr
             feats.append(_feat_from_norm(im))
         if feats:
             cents[lvl] = np.mean(np.stack(feats, axis=0), axis=0)
+    # ใช้ global log เพื่อไม่แตกไฟล์อุปกรณ์
     LOG.i("[plus-cls] centroids → " + (", ".join([f"+{k}" for k in sorted(cents.keys())]) if cents else "(empty)"))
     return cents
 
@@ -230,7 +238,7 @@ def _read_level_from_icon_topright(
             if sim > best_sim:
                 best_sim, best_lvl = sim, lvl
         if best_lvl is not None and best_sim >= cls_thr:
-            LOG.i(f"[ICON-PLUS CLS] level=+{best_lvl} cos={best_sim:.3f} (thr={cls_thr})")
+            LOG.dev_info(getattr(adb, "dev_id", "global"), f"[ICON-PLUS CLS] level=+{best_lvl} cos={best_sim:.3f} (thr={cls_thr})")
             return best_lvl
 
     # PASS A1: template-bank on gray
@@ -244,7 +252,7 @@ def _read_level_from_icon_topright(
                     best_sc, best_lvl = sc, lvl
         thr_bank_rgb = float(os.getenv("CONF_PLUS_BANK_RGB_THR", "0.83"))
         if best_lvl is not None and best_sc >= thr_bank_rgb:
-            LOG.i(f"[ICON-PLUS BANK(gray)] level=+{best_lvl} score={best_sc:.3f} (thr={thr_bank_rgb})")
+            LOG.dev_info(getattr(adb, "dev_id", "global"), f"[ICON-PLUS BANK(gray)] level=+{best_lvl} score={best_sc:.3f} (thr={thr_bank_rgb})")
             return best_lvl
 
     # PASS C: OCR (+0123456789)
@@ -260,12 +268,12 @@ def _read_level_from_icon_topright(
             try:
                 cand = int(m.group(1))
                 if 0 <= cand <= 15:
-                    LOG.i(f"[ICON-PLUS OCR] text='{text}' → level≈+{cand}")
+                    LOG.dev_info(getattr(adb, "dev_id", "global"), f"[ICON-PLUS OCR] text='{text}' → level≈+{cand}")
                     return cand
             except Exception:
                 pass
 
-    LOG.i("[ICON-PLUS] ไม่พบระดับ")
+    LOG.dev_info(getattr(adb, "dev_id", "global"), "[ICON-PLUS] ไม่พบระดับ")
     return None
 
 # --------- ROI snapshot & diff ----------
@@ -318,7 +326,7 @@ def _is_slot_empty(adb: ADBAdapter, slot_center: Tuple[int,int], slot_roi_size: 
         thr = float(os.getenv("CONF_SLOT_EMPTY_THR", _CFG.get("CONF_SLOT_EMPTY_THR", 0.85)))
         pt, sc = CV.match_center_multiscale(crop, tpl, thr=thr, scales=(0.9, 1.0, 1.1))
         emp = (pt is not None and sc >= thr)
-        LOG.i(f"[ตรวจช่อง] ว่าง={emp} (เทมเพลต score={sc:.3f} thr={thr})")
+        LOG.dev_info(getattr(adb, "dev_id", "global"), f"[ตรวจช่อง] ว่าง={emp} (เทมเพลต score={sc:.3f} thr={thr})")
         return emp
 
     g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
@@ -326,7 +334,7 @@ def _is_slot_empty(adb: ADBAdapter, slot_center: Tuple[int,int], slot_roi_size: 
     edges = cv2.Canny(g, 40, 120)
     edge_ratio = edges.mean()/255.0
     emp = (v < 400.0 and edge_ratio < 0.03)
-    LOG.i(f"[ตรวจช่อง] ว่าง={emp} (ฮิวริสติก var={v:.1f} edge={edge_ratio:.3f})")
+    LOG.dev_info(getattr(adb, "dev_id", "global"), f"[ตรวจช่อง] ว่าง={emp} (ฮิวริสติก var={v:.1f} edge={edge_ratio:.3f})")
     return emp
 
 # ===================== Device context & logging =====================
@@ -341,31 +349,31 @@ def _ctx(dev_id: str) -> dict:
             last_action_ts=0.0, _cfg_dumped=False
         )
         _DEVICE_CTX[dev_id] = c
-        LOG.i(f"[{dev_id}] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0")
+        LOG.dev_info(dev_id, f"[{dev_id}] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0")
     return c
 
 def _log_config_once(dev_id: str, *, slot_center, slot_status_roi, slot_roi_size, upgrade_btn, insert_roi, items, swipe_cfg):
     c = _ctx(dev_id)
     if c.get("_cfg_dumped"):
         return
-    LOG.i(f"[{dev_id}] CFG slot_center={slot_center}")
-    LOG.i(f"[{dev_id}] CFG slot_roi_size=[{slot_roi_size[0]},{slot_roi_size[1]}]")
-    LOG.i(f"[{dev_id}] CFG upgrade_btn={upgrade_btn}")
-    LOG.i(f"[{dev_id}] CFG insert_roi=(x1={insert_roi[0]},{insert_roi[1]},{insert_roi[2]},{insert_roi[3]})")
-    LOG.i(f"[{dev_id}] CFG items(len)={len(items)} sample={items[:6]}")
-    LOG.i(f"[{dev_id}] CFG swipe={swipe_cfg}")
+    LOG.dev_info(dev_id, f"[{dev_id}] CFG slot_center={slot_center}")
+    LOG.dev_info(dev_id, f"[{dev_id}] CFG slot_roi_size=[{slot_roi_size[0]},{slot_roi_size[1]}]")
+    LOG.dev_info(dev_id, f"[{dev_id}] CFG upgrade_btn={upgrade_btn}")
+    LOG.dev_info(dev_id, f"[{dev_id}] CFG insert_roi=(x1={insert_roi[0]},{insert_roi[1]},{insert_roi[2]},{insert_roi[3]})")
+    LOG.dev_info(dev_id, f"[{dev_id}] CFG items(len)={len(items)} sample={items[:6]}")
+    LOG.dev_info(dev_id, f"[{dev_id}] CFG swipe={swipe_cfg}")
     c["_cfg_dumped"] = True
 
 def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
     c["item_idx"] += 1
     if items and (c["item_idx"] % len(items) == 0):
         x, y, dy, ms = swipe_cfg["x"], swipe_cfg["y"], swipe_cfg["dy"], swipe_cfg["ms"]
-        LOG.i(f"[{dev_id}] SWIPE after {len(items)} items → ({x},{y})→({x},{y+dy}) ms={ms}")
+        LOG.dev_info(dev_id, f"[{dev_id}] SWIPE after {len(items)} items → ({x},{y})→({x},{y+dy}) ms={ms}")
         try:
             adb.tap(970, 120); time.sleep(0.15)
             adb.swipe(x, y, dy=dy, ms=ms); time.sleep(0.15)
         except Exception as e:
-            LOG.w(f"[{dev_id}] swipe fail: {e}")
+            LOG.dev_warn(dev_id, f"[{dev_id}] swipe fail: {e}")
     c["stage"] = "pick"
     c["successes"] = 0
     c["base_level"] = None
@@ -380,13 +388,17 @@ def worker_step(controller) -> Dict[str, Any]:
     1) ระดับไม่มีลด
     2) ระดับเพิ่มได้ทีละ 1 ต่อคลิก
     """
-    dev_id = controller.id
-    target = controller.target_level
+    # ----- id only -----
+    dev_id = (getattr(controller, "id", None) or "").strip() or "global"
 
+    # เตรียม ADB
     adb = getattr(controller, "adb", None)
     if adb is None:
         adb = ADBAdapter(controller.device)
         controller.adb = adb
+    setattr(adb, "dev_id", dev_id)
+
+    target = controller.target_level
 
     items = _items()
     slot_center = _pt("slot_center", (0, 0))
@@ -409,19 +421,19 @@ def worker_step(controller) -> Dict[str, Any]:
     c = _ctx(dev_id)
     out: Dict[str, Any] = {}
 
-    LOG.i(f"[{dev_id}] stage={c['stage']} item_idx={c['item_idx']} target=+{target} base={c.get('base_level')} succ={c.get('successes',0)} last_cur={c.get('last_cur')}")
+    LOG.dev_info(dev_id, f"[{dev_id}] stage={c['stage']} item_idx={c['item_idx']} target=+{target} base={c.get('base_level')} succ={c.get('successes',0)} last_cur={c.get('last_cur')}")
     _log_web(dev_id, f'stage=<b>{_html.escape(c["stage"])}</b> item_idx={c["item_idx"]} target={target}')
 
     # ---------- pick ----------
     if c["stage"] == "pick":
         if not items:
-            LOG.w(f"[{dev_id}] ไม่พบ items ใน config")
+            LOG.dev_warn(dev_id, f"[{dev_id}] ไม่พบ items ใน config")
             _log_web(dev_id, 'ไม่พบ items ใน config', "WARN")
             time.sleep(0.05)
             return {}
         idx = c["item_idx"] % len(items)
         ix, iy = items[idx]
-        LOG.i(f"[{dev_id}] แตะไอเทม idx={idx} @({ix},{iy})")
+        LOG.dev_info(dev_id, f"[{dev_id}] แตะไอเทม idx={idx} @({ix},{iy})")
         _log_web(dev_id, f'แตะไอเทม idx={idx} @({ix},{iy})')
         adb.tap(ix, iy)
         c["stage"] = "insert"
@@ -432,13 +444,13 @@ def worker_step(controller) -> Dict[str, Any]:
     if c["stage"] == "insert":
         idx = c["item_idx"] % len(items)
         ix, iy = items[idx]
-        LOG.i(f"[{dev_id}] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx={idx} @({ix},{iy})")
+        LOG.dev_info(dev_id, f"[{dev_id}] INSERT: เตรียมกด 'ใส่ลง' ด้วย CV สำหรับ idx={idx} @({ix},{iy})")
         _log_web(dev_id, f'INSERT: เตรียมกด "ใส่ลง" idx={idx} @({ix},{iy})')
 
         ok = _click_insert_via_cv(adb, insert_roi_rect=insert_roi, wait_pre=None)
         if not ok:
             sx, sy = slot_center
-            LOG.w(f"[{dev_id}] INSERT: CV not found → fallback slot_center @({sx},{sy})")
+            LOG.dev_warn(dev_id, f"[{dev_id}] INSERT: CV not found → fallback slot_center @({sx},{sy})")
             _log_web(dev_id, f'INSERT: CV not found → fallback slot_center @({sx},{sy})', "WARN")
 
         _log_web(dev_id, 'INSERT: done → รอ 0.25s')
@@ -469,7 +481,7 @@ def worker_step(controller) -> Dict[str, Any]:
         c["successes"] = 0
         c["last_cur"] = lvl  # ← เก็บ ground truth ตอน inspect
 
-        LOG.i(f"[{dev_id}] หลัง INSERT baseline level={lvl} digit={c['icon_digit']}")
+        LOG.dev_info(dev_id, f"[{dev_id}] หลัง INSERT baseline level={lvl} digit={c['icon_digit']}")
         _log_web(dev_id, f'หลัง INSERT อ่านระดับ = {_lv_html(lvl, target)} (digit={c["icon_digit"]})')
 
         c["stage"] = "upgrade"
@@ -491,17 +503,17 @@ def worker_step(controller) -> Dict[str, Any]:
             c["last_cur"] = cur
             prev_cur = cur
 
-        LOG.i(f"[{dev_id}] UPGRADE base={base} succ={c['successes']} cur={cur} (prev_cur={prev_cur}) / target=+{target}")
+        LOG.dev_info(dev_id, f"[{dev_id}] UPGRADE base={base} succ={c['successes']} cur={cur} (prev_cur={prev_cur}) / target=+{target}")
         _log_web(dev_id, f'UPGRADE: curr={_lv_html(cur, target)} / target={target}')
 
         if cur >= target:
-            LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป")
+            LOG.dev_info(dev_id, f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป")
             _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(cur, target)} / target={target} ✅')
             _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"done_item": True}
 
         if _is_slot_empty(adb, slot_center, slot_roi_size):
-            LOG.i(f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
+            LOG.dev_info(dev_id, f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
             _log_web(dev_id, 'ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้', "WARN")
             _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"break_at_level": cur}
@@ -515,7 +527,7 @@ def worker_step(controller) -> Dict[str, Any]:
 
         # tap
         ux, uy = upgrade_btn
-        LOG.i(f"[{dev_id}] UPGRADE: click upgrade_btn @({ux},{uy})")
+        LOG.dev_info(dev_id, f"[{dev_id}] UPGRADE: click upgrade_btn @({ux},{uy})")
         _log_web(dev_id, f'UPGRADE: click upgrade_btn @({ux},{uy})')
         adb.tap(ux, uy)
 
@@ -532,7 +544,7 @@ def worker_step(controller) -> Dict[str, Any]:
         def _judge_once(tag: str) -> Optional[bool]:
             # ช่องว่างหลัง tap → ข้ามชิ้น
             if _is_slot_empty(adb, slot_center, slot_roi_size):
-                LOG.i(f"[{dev_id}] ช่องว่างหลัง tap → ข้ามชิ้น")
+                LOG.dev_info(dev_id, f"[{dev_id}] ช่องว่างหลัง tap → ข้ามชิ้น")
                 _log_web(dev_id, 'ช่องว่างหลัง tap → ข้ามชิ้น', "WARN")
                 _next_item(dev_id, adb, items, swipe_cfg, c)
                 out["break_at_level"] = prev_cur
@@ -546,12 +558,12 @@ def worker_step(controller) -> Dict[str, Any]:
             diff = _roi_diff_score(before_snap, after_snap)
             after_digit = _ocr_plus_from_icon_norm(after_snap)
 
-            LOG.i(f"[{dev_id}] [{tag}] num={after_num} vs prev_cur={prev_cur} | diff={diff:.3f} digit {before_digit}→{after_digit}")
+            LOG.dev_info(dev_id, f"[{dev_id}] [{tag}] num={after_num} vs prev_cur={prev_cur} | diff={diff:.3f} digit {before_digit}→{after_digit}")
 
             # ---- กติกา 1/2: ไม่มีลด และเพิ่มได้ทีละ 1 ----
             if after_num is not None:
                 if after_num < prev_cur:
-                    LOG.w(f"[{dev_id}] [{tag}] after_num<{prev_cur} → treat as FAIL (no-decrease rule)")
+                    LOG.dev_warn(dev_id, f"[{dev_id}] [{tag}] after_num<{prev_cur} → treat as FAIL (no-decrease rule)")
                     _log_web(dev_id, f'判定: <b style="color:#e53935">ล้มเหลว</b> (อ่านลดลง → ปัดตก)', "WARN")
                     return False
                 elif after_num == prev_cur:
@@ -564,10 +576,10 @@ def worker_step(controller) -> Dict[str, Any]:
                     c["icon_digit"] = after_digit
                     new_cur = c["last_cur"]
                     out["success_clicks"] = out.get("success_clicks", 0) + 1
-                    LOG.i(f"[{dev_id}] [{tag}] SUCCESS by numeric (+1 clamp) → new_cur={new_cur}")
+                    LOG.dev_info(dev_id, f"[{dev_id}] [{tag}] SUCCESS by numeric (+1 clamp) → new_cur={new_cur}")
                     _log_web(dev_id, f'ผล: <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
                     if new_cur >= target:
-                        LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
+                        LOG.dev_info(dev_id, f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
                         _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
                         _next_item(dev_id, adb, items, swipe_cfg, c)
                         out["done_item"] = True
@@ -583,10 +595,10 @@ def worker_step(controller) -> Dict[str, Any]:
                 c["icon_digit"] = after_digit
                 new_cur = c["last_cur"]
                 out["success_clicks"] = out.get("success_clicks", 0) + 1
-                LOG.i(f"[{dev_id}] [{tag}] SUCCESS by {'diff' if success_by_diff else 'ocr'} (+1) → new_cur={new_cur}")
+                LOG.dev_info(dev_id, f"[{dev_id}] [{tag}] SUCCESS by {'diff' if success_by_diff else 'ocr'} (+1) → new_cur={new_cur}")
                 _log_web(dev_id, f'ผล: <b>สำเร็จ</b> → curr={_lv_html(new_cur, target)} / target={target}')
                 if new_cur >= target:
-                    LOG.i(f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
+                    LOG.dev_info(dev_id, f"[{dev_id}] บรรลุเป้าหมาย +{target} → ไปชิ้นถัดไป (instant)")
                     _log_web(dev_id, f'เสร็จสิ้นชิ้นนี้: curr={_lv_html(new_cur, target)} / target={target} ✅')
                     _next_item(dev_id, adb, items, swipe_cfg, c)
                     out["done_item"] = True
@@ -609,7 +621,7 @@ def worker_step(controller) -> Dict[str, Any]:
                     decided = True
                     return out
             if not decided:
-                LOG.i(f"[{dev_id}] ผล: ล้มเหลว (no change within {ICON_POLL_BUDGET:.2f}s)")
+                LOG.dev_info(dev_id, f"[{dev_id}] ผล: ล้มเหลว (no change within {ICON_POLL_BUDGET:.2f}s)")
                 _log_web(dev_id, f'ผล: <b style="color:#e53935">ล้มเหลว</b> → curr={_lv_html(prev_cur, target)} / target={target}', "WARN")
                 return out
 
@@ -617,7 +629,8 @@ def worker_step(controller) -> Dict[str, Any]:
 
 # ===================== Loop wrapper =====================
 def worker_loop(ctrl, step_fn, sleep_sec: float = 0.12):
-    LOG.i(f"[{ctrl.id}] loop start")
+    dev_id = (getattr(ctrl, "id", None) or "").strip() or "global"
+    LOG.dev_info(dev_id, f"[{dev_id}] loop start")
 
     global _PLUS_TPL_BANK, _PLUS_CLS_CENTROIDS
     if not _PLUS_TPL_BANK:
@@ -637,27 +650,28 @@ def worker_loop(ctrl, step_fn, sleep_sec: float = 0.12):
             except Exception as e:
                 ctrl.last_error = str(e)
                 ctrl.state = "error"
-                LOG.e(f"[{ctrl.id}] step error: {e}")
-                _log_web(ctrl.id, f'step error: {_html.escape(str(e))}', "ERROR")
+                LOG.dev_error(dev_id, f"[{dev_id}] step error: {e}")
+                _log_web(dev_id, f'step error: {_html.escape(str(e))}', "ERROR")
                 break
 
             maxsec = int(os.getenv("MAX_ITEM_TIME_SEC", str(_MAX_ITEM_TIME_SEC)))
             if maxsec > 0 and (time.time() - t0_item) > maxsec:
-                LOG.i(f"[{ctrl.id}] item timeout {maxsec}s → advance item")
-                _log_web(ctrl.id, f'item timeout {maxsec}s → advance item', "WARN")
-                c = _ctx(ctrl.id)
+                LOG.dev_info(dev_id, f"[{dev_id}] item timeout {maxsec}s → advance item")
+                _log_web(dev_id, f'item timeout {maxsec}s → advance item', "WARN")
+                c = _ctx(dev_id)
                 items = _items()
                 swipe_cfg = _swipe()
                 adb = getattr(ctrl, "adb", None) or ADBAdapter(ctrl.device)
+                setattr(adb, "dev_id", dev_id)
                 ctrl.adb = adb
-                _next_item(ctrl.id, adb, items, swipe_cfg, c)
+                _next_item(dev_id, adb, items, swipe_cfg, c)
                 t0_item = time.time()
 
             if int(ctrl.last_tick) % 3 == 0:
-                LOG.i(f"[{ctrl.id}] heartbeat items={getattr(ctrl,'items_upgraded_done',0)} target=+{getattr(ctrl,'target_level',0)}")
-                _log_web(ctrl.id, f'heartbeat items={getattr(ctrl,"items_upgraded_done",0)} target={getattr(ctrl,"target_level",0)}')
+                LOG.dev_info(dev_id, f"[{dev_id}] heartbeat items={getattr(ctrl,'items_upgraded_done',0)} target=+{getattr(ctrl,'target_level',0)}")
+                _log_web(dev_id, f'heartbeat items={getattr(ctrl,"items_upgraded_done",0)} target={getattr(ctrl,"target_level",0)}')
 
             time.sleep(sleep_sec)
     finally:
-        LOG.i(f"[{ctrl.id}] loop exit (state={ctrl.state})")
-        _log_web(ctrl.id, f'loop exit (state={_html.escape(str(ctrl.state))})')
+        LOG.dev_info(dev_id, f"[{dev_id}] loop exit (state={ctrl.state})")
+        _log_web(dev_id, f'loop exit (state={_html.escape(str(ctrl.state))})')
