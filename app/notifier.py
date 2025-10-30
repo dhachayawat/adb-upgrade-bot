@@ -1,23 +1,65 @@
 # app/notifier.py
-import os
-import json
-import time
-import logging
+import os, json, time, logging
 from typing import Optional, Dict, Any
-import requests
 
 logger = logging.getLogger("adb-upgrade-bot")
 
-# ===== ช่องทางที่รองรับผ่าน ENV =====
-# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-# LINE_NOTIFY_TOKEN
-# WEBHOOK_URL  (รับ JSON POST)
-#
-# หมายเหตุ:
-# - ใส่ ENV อันไหนไว้ ก็จะส่งทางนั้นด้วย (ส่งได้หลายทางพร้อมกัน)
-# - ถ้าไม่ใส้อะไรเลย ฟังก์ชันจะไม่ raise error แต่จะคืนผลว่าส่ง 0 ช่องทาง
+# พยายามใช้ requests ถ้ามี; ถ้าไม่มีจะ fallback เป็น urllib
+try:
+    import requests
+except Exception:
+    requests = None
+
+import urllib.request
+import urllib.error
 
 DEFAULT_TIMEOUT = 6  # seconds
+
+def _post(url: str, *, json_body=None, form_data=None, headers=None, timeout=DEFAULT_TIMEOUT):
+    """ส่ง POST โดยใช้ requests ถ้ามี ไม่งั้นใช้ urllib"""
+    headers = headers or {}
+    if requests is not None:
+        if json_body is not None:
+            return requests.post(url, json=json_body, headers=headers, timeout=timeout)
+        else:
+            return requests.post(url, data=form_data, headers=headers, timeout=timeout)
+    else:
+        try:
+            if json_body is not None:
+                data = json.dumps(json_body).encode("utf-8")
+                headers = {**headers, "Content-Type": "application/json"}
+            else:
+                # form-encoded
+                from urllib.parse import urlencode
+                data = urlencode(form_data or {}).encode("utf-8")
+                headers = {**headers, "Content-Type": "application/x-www-form-urlencoded"}
+
+            req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                class DummyResp:
+                    status_code = resp.getcode()
+                    text = resp.read().decode("utf-8", errors="ignore")
+                    def json(self):
+                        try:
+                            return json.loads(self.text)
+                        except Exception:
+                            return {}
+                return DummyResp()
+        except urllib.error.HTTPError as e:
+            class DummyResp:
+                status_code = e.code
+                text = e.read().decode("utf-8", errors="ignore")
+                def json(self): 
+                    try: return json.loads(self.text)
+                    except Exception: return {}
+            return DummyResp()
+        except Exception as e:
+            # จำลอง response ล้มเหลว
+            class DummyResp:
+                status_code = 599
+                text = str(e)
+                def json(self): return {}
+            return DummyResp()
 
 def _send_telegram(text: str) -> bool:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -26,10 +68,10 @@ def _send_telegram(text: str) -> bool:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
-        r = requests.post(url, json={"chat_id": chat_id, "text": text}, timeout=DEFAULT_TIMEOUT)
-        ok = r.status_code == 200 and r.json().get("ok", False)
+        r = _post(url, json_body={"chat_id": chat_id, "text": text})
+        ok = (r.status_code == 200) and (r.json().get("ok", False) if hasattr(r, "json") else True)
         if not ok:
-            logger.warning("Telegram notify failed: %s", r.text[:300])
+            logger.warning("Telegram notify failed: %s", getattr(r, "text", "")[:300])
         return ok
     except Exception as e:
         logger.exception("Telegram notify exception: %s", e)
@@ -41,12 +83,11 @@ def _send_line_notify(text: str) -> bool:
         return False
     url = "https://notify-api.line.me/api/notify"
     headers = {"Authorization": f"Bearer {token}"}
-    data = {"message": text}
     try:
-        r = requests.post(url, headers=headers, data=data, timeout=DEFAULT_TIMEOUT)
-        ok = r.status_code == 200
+        r = _post(url, form_data={"message": text}, headers=headers)
+        ok = (r.status_code == 200)
         if not ok:
-            logger.warning("LINE Notify failed: %s", r.text[:300])
+            logger.warning("LINE Notify failed: %s", getattr(r, "text", "")[:300])
         return ok
     except Exception as e:
         logger.exception("LINE Notify exception: %s", e)
@@ -57,21 +98,16 @@ def _send_webhook(payload: Dict[str, Any]) -> bool:
     if not url:
         return False
     try:
-        r = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
+        r = _post(url, json_body=payload)
         ok = 200 <= r.status_code < 300
         if not ok:
-            logger.warning("Webhook notify failed: %s", r.text[:300])
+            logger.warning("Webhook notify failed: %s", getattr(r, "text", "")[:300])
         return ok
     except Exception as e:
         logger.exception("Webhook notify exception: %s", e)
         return False
 
-# -------------- public API --------------
 def notify(title: str, message: str, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    ส่งแจ้งเตือนหลายช่องทางตาม ENV ที่กำหนด
-    return: {"sent": int, "channels": {"telegram": bool, "line": bool, "webhook": bool}}
-    """
     meta = meta or {}
     text = f"{title}\n{message}"
     payload = {"title": title, "message": message, "meta": meta, "ts": int(time.time())}
@@ -81,12 +117,4 @@ def notify(title: str, message: str, meta: Optional[Dict[str, Any]] = None) -> D
     sent_webhook = _send_webhook(payload)
 
     sent_count = sum([sent_tg, sent_line, sent_webhook])
-
-    return {
-        "sent": sent_count,
-        "channels": {
-            "telegram": sent_tg,
-            "line": sent_line,
-            "webhook": sent_webhook,
-        }
-    }
+    return {"sent": sent_count, "channels": {"telegram": sent_tg, "line": sent_line, "webhook": sent_webhook}}

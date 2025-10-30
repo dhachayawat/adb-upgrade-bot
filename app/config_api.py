@@ -13,6 +13,8 @@ from .summary_store import SummaryStore
 from .core.adb_adapter import ADBAdapter, ADBError
 from . import rtlog as LOG
 from .notifier import notify as _do_notify
+import logging
+_pylog = logging.getLogger("adb-upgrade-bot")
 
 RUN_MODE = os.getenv("RUN_MODE", "thread").lower()
 if RUN_MODE == "mp":
@@ -114,16 +116,19 @@ def init_api(step_fn=None) -> None:
                 LOG.w(f"[config_api] set_weblog_queue (post-init) failed: {e}")
 
 def _ensure_notify_shape(n: dict) -> dict:
-    """ ปรับโครงสร้าง notify ให้ครบช่อง (กัน keyerror) """
+    """ ปรับโครงสร้าง notify ให้ครบช่อง (ไม่มี LINE แล้ว) """
     n = n or {}
     n.setdefault("max_item_slots", 12)
     n.setdefault("dedup_ttl_sec", 300)
     n.setdefault("user_label", "")
     ch = n.setdefault("channels", {})
     ch.setdefault("telegram", {"enabled": False, "token": "", "chat_id": ""})
-    ch.setdefault("line",     {"enabled": False, "token": ""})
     ch.setdefault("webhook",  {"enabled": False, "url": ""})
+    # กรองทิ้งของเก่า
+    if "line" in ch:
+        ch.pop("line", None)
     return n
+
 
 def _with_env(overrides: dict, fn):
     """
@@ -150,16 +155,6 @@ def _with_env(overrides: dict, fn):
 
 @bp_api.post("/notify-test")
 def api_notify_test():
-    """
-    ยิงทดสอบแจ้งเตือนตามค่าที่ส่งมา หรือใช้ค่าจาก CFG.notify ถ้าไม่ได้ส่ง
-    payload (JSON):
-    {
-      "notify": { ... ตามสคีมา CFG.notify ... },   # optional
-      "title": "🔔 Notify Test",                   # optional
-      "message": "ทดสอบ...",                       # optional
-      "meta": { "source":"ui" }                    # optional
-    }
-    """
     init_api()
     try:
         body = request.get_json(silent=True) or {}
@@ -167,11 +162,10 @@ def api_notify_test():
         message = body.get("message") or "ทดสอบการแจ้งเตือนจาก /api/notify-test"
         meta    = body.get("meta")    or {}
 
-        # โหลด CFG แล้ว fallback ถ้า payload ไม่มี notify
-        cfg = ConfigStore().load_defaults()
-        notify_cfg = _ensure_notify_shape(body.get("notify") or cfg.get("notify") or {})
+        # อ่านจากไฟล์เดียวกับ /save-config
+        cfg_file = _read_json(_cfg_path()) or {}
+        notify_cfg = _ensure_notify_shape(body.get("notify") or cfg_file.get("notify") or {})
 
-        # เตรียม ENV overrides ตามช่องทางที่เปิดใช้
         ov = {}
         ch = notify_cfg.get("channels", {})
 
@@ -180,26 +174,20 @@ def api_notify_test():
             ov["TELEGRAM_BOT_TOKEN"] = tg.get("token") or ""
             ov["TELEGRAM_CHAT_ID"]   = tg.get("chat_id") or ""
 
-        ln = ch.get("line", {})
-        if ln.get("enabled"):
-            ov["LINE_NOTIFY_TOKEN"]  = ln.get("token") or ""
-
         wh = ch.get("webhook", {})
         if wh.get("enabled"):
             ov["WEBHOOK_URL"]        = wh.get("url") or ""
 
-        # call notifier ภายใต้ ENV ชั่วคราว
         def _call():
             return _do_notify(title=title, message=message, meta=meta)
 
         result = _with_env(ov, _call)
-
-        LOG.info("[notify-test] channels=%s result=%s", list(k for k,v in ov.items() if v), result)
+        _pylog.info("[notify-test] channels=%s result=%s", [k for k,v in ov.items() if v], result)
         return jsonify({"ok": True, "result": result})
-
     except Exception as e:
-        LOG.exception("notify-test error: %s", e)
+        _pylog.exception("notify-test error: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 400
+
 
 # -------------------- endpoints --------------------
 @bp_api.get("/devices")
@@ -534,13 +522,28 @@ def _write_json_atomic(path: Path, data: dict) -> None:
 @bp_api.get("/config")
 def api_config_get():
     p = _cfg_path()
-    return jsonify(_read_json(p))
+    cfg = _read_json(p) or {}
+    # สำคัญ: normalize ให้ UI เสมอ (ไม่มี line แล้ว)
+    cfg["notify"] = _ensure_notify_shape(cfg.get("notify") or {})
+    return jsonify(cfg)
+
 
 @bp_api.post("/save-config")
 def api_config_save():
     body = request.get_json(silent=True) or {}
     try:
-        _write_json_atomic(_cfg_path(), body)
+        cur = _read_json(_cfg_path()) or {}
+        keys = [
+            "device","slot_center","slot_status","slot_roi","slot_status_roi",
+            "overlay_abs","insert_roi","upgrade_btn","items","swipe","notify"
+        ]
+        merged = dict(cur)
+        for k in keys:
+            if k in body:
+                merged[k] = body[k]
+        # normalize notify ให้ตรงกับ UI (ไม่มี LINE)
+        merged["notify"] = _ensure_notify_shape(merged.get("notify") or {})
+        _write_json_atomic(_cfg_path(), merged)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -552,3 +555,4 @@ def api_config_clear():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+

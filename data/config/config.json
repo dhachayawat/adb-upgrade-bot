@@ -25,10 +25,10 @@
     "y1": 236
   },
   "insert_roi": {
-    "h": 226,
+    "h": 246,
     "w": 487,
     "x1": 499,
-    "y1": 461
+    "y1": 441
   },
   "upgrade_btn": [
     844,
@@ -65,5 +65,21 @@
     "ms": 800,
     "x": 270,
     "y": 220
+  },
+  "notify": {
+    "max_item_slots": 6,
+    "dedup_ttl_sec": 300,
+    "user_label": "YGเกมส์หมา",
+    "channels": {
+      "telegram": {
+        "enabled": true,
+        "token": "8434188503:AAE10u8XXMhO32VBS0TpcpdYpxgMXEIyMDo",
+        "chat_id": "-5034834829"
+      },
+      "webhook": {
+        "enabled": false,
+        "url": ""
+      }
+    }
   }
 }
