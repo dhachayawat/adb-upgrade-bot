@@ -12,6 +12,7 @@ from .config_store import ConfigStore, Device
 from .summary_store import SummaryStore
 from .core.adb_adapter import ADBAdapter, ADBError
 from . import rtlog as LOG
+from .notifier import notify as _do_notify
 
 RUN_MODE = os.getenv("RUN_MODE", "thread").lower()
 if RUN_MODE == "mp":
@@ -111,6 +112,94 @@ def init_api(step_fn=None) -> None:
                 _mgr.set_weblog_queue(_weblog_q)
             except Exception as e:
                 LOG.w(f"[config_api] set_weblog_queue (post-init) failed: {e}")
+
+def _ensure_notify_shape(n: dict) -> dict:
+    """ ปรับโครงสร้าง notify ให้ครบช่อง (กัน keyerror) """
+    n = n or {}
+    n.setdefault("max_item_slots", 12)
+    n.setdefault("dedup_ttl_sec", 300)
+    n.setdefault("user_label", "")
+    ch = n.setdefault("channels", {})
+    ch.setdefault("telegram", {"enabled": False, "token": "", "chat_id": ""})
+    ch.setdefault("line",     {"enabled": False, "token": ""})
+    ch.setdefault("webhook",  {"enabled": False, "url": ""})
+    return n
+
+def _with_env(overrides: dict, fn):
+    """
+    ตั้ง ENV ชั่วคราวแล้วเรียก fn(); คืนค่า ENV หลังจบ
+    overrides: dict เช่น {"TELEGRAM_BOT_TOKEN":"xxx", "LINE_NOTIFY_TOKEN":"yyy"}
+    """
+    saved = {}
+    try:
+        for k, v in overrides.items():
+            saved[k] = os.getenv(k)
+            if v is None or v == "":
+                if k in os.environ:
+                    del os.environ[k]
+            else:
+                os.environ[k] = str(v)
+        return fn()
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                if k in os.environ:
+                    del os.environ[k]
+            else:
+                os.environ[k] = v
+
+@bp_api.post("/notify-test")
+def api_notify_test():
+    """
+    ยิงทดสอบแจ้งเตือนตามค่าที่ส่งมา หรือใช้ค่าจาก CFG.notify ถ้าไม่ได้ส่ง
+    payload (JSON):
+    {
+      "notify": { ... ตามสคีมา CFG.notify ... },   # optional
+      "title": "🔔 Notify Test",                   # optional
+      "message": "ทดสอบ...",                       # optional
+      "meta": { "source":"ui" }                    # optional
+    }
+    """
+    init_api()
+    try:
+        body = request.get_json(silent=True) or {}
+        title   = body.get("title")   or "🔔 Notify Test"
+        message = body.get("message") or "ทดสอบการแจ้งเตือนจาก /api/notify-test"
+        meta    = body.get("meta")    or {}
+
+        # โหลด CFG แล้ว fallback ถ้า payload ไม่มี notify
+        cfg = ConfigStore().load_defaults()
+        notify_cfg = _ensure_notify_shape(body.get("notify") or cfg.get("notify") or {})
+
+        # เตรียม ENV overrides ตามช่องทางที่เปิดใช้
+        ov = {}
+        ch = notify_cfg.get("channels", {})
+
+        tg = ch.get("telegram", {})
+        if tg.get("enabled"):
+            ov["TELEGRAM_BOT_TOKEN"] = tg.get("token") or ""
+            ov["TELEGRAM_CHAT_ID"]   = tg.get("chat_id") or ""
+
+        ln = ch.get("line", {})
+        if ln.get("enabled"):
+            ov["LINE_NOTIFY_TOKEN"]  = ln.get("token") or ""
+
+        wh = ch.get("webhook", {})
+        if wh.get("enabled"):
+            ov["WEBHOOK_URL"]        = wh.get("url") or ""
+
+        # call notifier ภายใต้ ENV ชั่วคราว
+        def _call():
+            return _do_notify(title=title, message=message, meta=meta)
+
+        result = _with_env(ov, _call)
+
+        LOG.info("[notify-test] channels=%s result=%s", list(k for k,v in ov.items() if v), result)
+        return jsonify({"ok": True, "result": result})
+
+    except Exception as e:
+        LOG.exception("notify-test error: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 400
 
 # -------------------- endpoints --------------------
 @bp_api.get("/devices")
