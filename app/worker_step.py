@@ -12,6 +12,7 @@ from .config_store import ConfigStore
 from .summary_store import SummaryStore
 from . import rtlog as LOG
 from . import cv_utils as CV
+from .notifier import notify as _do_notify  # ใช้ notifier เดิม (Telegram/Webhook)
 
 # ===================== Global config =====================
 _CFG = ConfigStore().load_defaults()
@@ -84,9 +85,127 @@ def _log_web(dev_id: str, html_msg: str, level: str = "INFO"):
         from .rtlog import mp_web as _rtlog_mp_web
         _rtlog_mp_web(dev_id, html_msg, level.upper())
     except Exception:
-        # ตกมา plain log ต่อ-device กันหาย
         LOG.dev_info(dev_id or "global", f"[WEB-LOG fallback] {html_msg}")
 
+# -------------------- Device label helper --------------------
+def _device_label(ctrl, dev_id: str) -> str:
+    """
+    คืนชื่ออุปกรณ์อ่านง่าย (device_name) เท่านั้น — ไม่แสดง serial/host
+    ลำดับความสำคัญ: ctrl.name → ctrl.id → dev_id
+    """
+    return str(getattr(ctrl, "name", None) or getattr(ctrl, "id", None) or dev_id)
+
+# ===================== Notify helpers (from config) =====================
+def _notify_cfg() -> dict:
+    n = (_CFG.get("notify") or {}).copy()
+    n.setdefault("max_item_slots", 12)
+    n.setdefault("dedup_ttl_sec", 300)
+    n.setdefault("user_label", "")
+    ch = n.setdefault("channels", {})
+    ch.setdefault("telegram", {"enabled": False, "token": "", "chat_id": ""})
+    ch.setdefault("webhook",  {"enabled": False, "url": ""})
+    return n
+
+def _notify_env_overrides(n: dict) -> Dict[str, str]:
+    ov = {}
+    tg = (n.get("channels", {}).get("telegram") or {})
+    if tg.get("enabled"):
+        ov["TELEGRAM_BOT_TOKEN"] = tg.get("token") or ""
+        ov["TELEGRAM_CHAT_ID"]   = tg.get("chat_id") or ""
+    wh = (n.get("channels", {}).get("webhook") or {})
+    if wh.get("enabled"):
+        ov["WEBHOOK_URL"] = wh.get("url") or ""
+    return ov
+
+class _EnvPatch:
+    def __init__(self, overrides: Dict[str, str]):
+        self._overrides = overrides
+        self._saved: Dict[str, Optional[str]] = {}
+    def __enter__(self):
+        for k, v in self._overrides.items():
+            self._saved[k] = os.getenv(k)
+            if v:
+                os.environ[k] = str(v)
+            else:
+                if k in os.environ: del os.environ[k]
+        return self
+    def __exit__(self, exc_type, exc, tb):
+        for k, v in self._saved.items():
+            if v is None:
+                if k in os.environ: del os.environ[k]
+            else:
+                os.environ[k] = v
+
+def _notify_once(dev_id: str, title: str, message: str, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    ncfg = _notify_cfg()
+    meta = (meta or {})
+    if ncfg.get("user_label"):
+        message = f"[{ncfg['user_label']}] {message}"
+    with _EnvPatch(_notify_env_overrides(ncfg)):
+        res = _do_notify(title=title, message=message, meta=meta)
+    LOG.dev_info(dev_id, f"[notify] sent={res.get('sent',0)} channels={res.get('channels')}")
+    return res
+
+def _auto_stop_and_notify(ctrl, dev_id: str, reason: str, detail: str, meta: Optional[Dict[str, Any]] = None) -> None:
+    """
+    หยุดเครื่อง และแจ้งเตือน 1 ครั้งต่อเหตุการณ์ โดยมี dedup TTL
+    """
+    ncfg = _notify_cfg()
+    dedup = int(ncfg.get("dedup_ttl_sec", 300))
+    c = _ctx(dev_id)
+    now = time.time()
+    ded = c.setdefault("_notify_dedup", {})
+    last_ts = float(ded.get(reason, 0.0))
+
+    if dedup <= 0 or (now - last_ts) >= dedup:
+        label = _device_label(ctrl, dev_id)  # <<< ใช้ device_name ที่อ่านง่าย
+        # summary fields for message/meta
+        fail_insert = int(c.get("fail_insert_count", 0))
+        empty_cnt   = int(c.get("empty_count", 0))
+        target_lvl  = int(getattr(ctrl, "target_level", 0))
+        item_idx    = int(c.get("item_idx", 0))
+
+        title = f"🔔 {reason} · {label}"
+        message = (
+            f"{detail}\n"
+            f"• Device: {label}\n"
+            f"• Target: +{target_lvl}\n"
+            f"• Item index: {item_idx}\n"
+            f"• Fail insert: {fail_insert}\n"
+            f"• Empty slots: {empty_cnt}"
+        )
+
+        _log_web(dev_id, f'NOTIFY: <b>{_html.escape(reason)}</b> — {_html.escape(label)}', "WARN")
+        _notify_once(
+            dev_id,
+            title=title,
+            message=message,
+            meta=dict(
+                meta or {},
+                dev_id=dev_id,
+                device_label=label,                   # ชื่ออุปกรณ์ (แสดงผล)
+                device_host=getattr(ctrl, "device", None),  # เก็บ serial/host ใน meta เท่านั้น
+                device_name=label,
+                reason=reason,
+                target_level=target_lvl,
+                item_idx=item_idx,
+                fail_insert=fail_insert,
+                empty_count=empty_cnt,
+                ts=int(now),
+            ),
+        )
+        ded[reason] = now
+    else:
+        LOG.dev_info(dev_id, f"[notify] dedup skip reason={reason}")
+
+    # stop
+    try:
+        ctrl.stop_event.set()
+        ctrl.state = "stopped"
+        LOG.dev_warn(dev_id, f"[{dev_id}] auto-stop: {reason}")
+        _log_web(dev_id, f'auto-stop: { _html.escape(reason) }', "WARN")
+    except Exception as e:
+        LOG.dev_error(dev_id, f"[{dev_id}] auto-stop failed: {e}")
 
 # ===================== OCR / Image helpers =====================
 try:
@@ -174,7 +293,6 @@ def _load_plus_template_bank(base_dir: Optional[str] = None) -> Dict[int, list]:
         if tpls:
             bank[n] = tpls
             loaded.append(f"+{n}:{len(tpls)}")
-    # ใช้ global log เพื่อไม่แตกไฟล์อุปกรณ์
     LOG.i("[plus-bank] loaded → " + (", ".join(loaded) if loaded else "(empty)"))
     return bank
 
@@ -202,7 +320,6 @@ def _build_plus_classifier(base_dir: Optional[str] = None) -> Dict[int, np.ndarr
             feats.append(_feat_from_norm(im))
         if feats:
             cents[lvl] = np.mean(np.stack(feats, axis=0), axis=0)
-    # ใช้ global log เพื่อไม่แตกไฟล์อุปกรณ์
     LOG.i("[plus-cls] centroids → " + (", ".join([f"+{k}" for k in sorted(cents.keys())]) if cents else "(empty)"))
     return cents
 
@@ -346,7 +463,11 @@ def _ctx(dev_id: str) -> dict:
             base_level=None, successes=0,
             icon_snap=None, icon_digit=None,
             last_cur=None,
-            last_action_ts=0.0, _cfg_dumped=False
+            last_action_ts=0.0, _cfg_dumped=False,
+            # counters
+            fail_insert_count=0,
+            empty_count=0,
+            _notify_dedup={}
         )
         _DEVICE_CTX[dev_id] = c
         LOG.dev_info(dev_id, f"[{dev_id}] เริ่มคอนเท็กซ์ใหม่ stage=pick item_idx=0")
@@ -381,15 +502,43 @@ def _next_item(dev_id: str, adb: ADBAdapter, items, swipe_cfg, c):
     c["icon_digit"] = None
     c["last_cur"] = None
 
+def _inc_empty_and_maybe_stop(ctrl, dev_id: str):
+    """
+    เพิ่มตัวนับช่องว่าง และถ้าถึงเกณฑ์จาก notify.max_item_slots → auto-stop + notify
+    """
+    c = _ctx(dev_id)
+    c["empty_count"] = int(c.get("empty_count", 0)) + 1
+    ncfg = _notify_cfg()
+    max_slots = int(ncfg.get("max_item_slots", 12))
+    LOG.dev_info(dev_id, f"[{dev_id}] empty_count={c['empty_count']}/{max_slots}")
+    _log_web(dev_id, f'ช่องว่างสะสม {c["empty_count"]}/{max_slots}', "WARN")
+    if c["empty_count"] >= max_slots:
+        _auto_stop_and_notify(
+            ctrl,
+            dev_id,
+            reason="items_depleted",
+            detail=f"ตรวจพบช่องว่างสะสมครบ {max_slots} ช่อง — หยุดอัตโนมัติ",
+            meta={"empty_count": c["empty_count"], "max_slots": max_slots},
+        )
+
+def _reset_empty_counter(dev_id: str):
+    c = _ctx(dev_id)
+    if c.get("empty_count", 0) != 0:
+        LOG.dev_info(dev_id, f"[{dev_id}] reset empty_count from {c['empty_count']} → 0 (พบไอเทม)")
+    c["empty_count"] = 0
+
 # ===================== Main step =====================
 def worker_step(controller) -> Dict[str, Any]:
     """
     สเตตแมชชีน (no-overlay) + กติกา:
     1) ระดับไม่มีลด
     2) ระดับเพิ่มได้ทีละ 1 ต่อคลิก
+    3) นับช่องว่างสะสมรายอุปกรณ์; ถ้าครบ max_item_slots → auto-stop + notify
+       พบไอเทมเมื่อใดให้รีเซ็ตตัวนับ
     """
     # ----- id only -----
     dev_id = (getattr(controller, "id", None) or "").strip() or "global"
+    dev_name = (getattr(controller, "name", None) or "").strip() or "global"
 
     # เตรียม ADB
     adb = getattr(controller, "adb", None)
@@ -427,8 +576,9 @@ def worker_step(controller) -> Dict[str, Any]:
     # ---------- pick ----------
     if c["stage"] == "pick":
         if not items:
-            LOG.dev_warn(dev_id, f"[{dev_id}] ไม่พบ items ใน config")
-            _log_web(dev_id, 'ไม่พบ items ใน config', "WARN")
+            LOG.dev_warn(dev_id, f"[{dev_id}] ไม่พบ items ใน config → ถือว่าไม่มีไอเทม")
+            _log_web(dev_id, 'ไม่พบ items ใน config → ถือว่าไม่มีไอเทม', "WARN")
+            _inc_empty_and_maybe_stop(controller, dev_id)
             time.sleep(0.05)
             return {}
         idx = c["item_idx"] % len(items)
@@ -449,9 +599,10 @@ def worker_step(controller) -> Dict[str, Any]:
 
         ok = _click_insert_via_cv(adb, insert_roi_rect=insert_roi, wait_pre=None)
         if not ok:
-            sx, sy = slot_center
-            LOG.dev_warn(dev_id, f"[{dev_id}] INSERT: CV not found → fallback slot_center @({sx},{sy})")
-            _log_web(dev_id, f'INSERT: CV not found → fallback slot_center @({sx},{sy})', "WARN")
+            c["fail_insert_count"] = int(c.get("fail_insert_count", 0)) + 1
+            LOG.dev_warn(dev_id, f"[{dev_id}] INSERT: CV not found → fallback slot_center / fail_insert_count={c['fail_insert_count']}")
+            _log_web(dev_id, f'INSERT: CV not found → fallback slot_center (fail_insert={c["fail_insert_count"]})', "WARN")
+            # ไม่เพิ่ม empty-count ที่นี่ ให้ไปตัดสินที่ inspect
 
         _log_web(dev_id, 'INSERT: done → รอ 0.25s')
         time.sleep(float(os.getenv("POST_INSERT_SETTLE", "0.25")))
@@ -462,6 +613,17 @@ def worker_step(controller) -> Dict[str, Any]:
 
     # ---------- inspect ----------
     if c["stage"] == "inspect":
+        # ถ้าช่องยังว่างหลัง insert → นับว่างและไปชิ้นถัดไป
+        if _is_slot_empty(adb, slot_center, slot_roi_size):
+            LOG.dev_info(dev_id, f"[{dev_id}] หลัง INSERT ยังว่าง → ข้ามชิ้นนี้และนับช่องว่าง")
+            _log_web(dev_id, 'หลัง INSERT ยังว่าง → ข้ามชิ้นนี้', "WARN")
+            _inc_empty_and_maybe_stop(controller, dev_id)
+            _next_item(dev_id, adb, items, swipe_cfg, c)
+            return {"break_at_level": c.get("last_cur")}
+
+        # พบไอเทมแล้ว ⇒ รีเซ็ตที่นี่
+        _reset_empty_counter(dev_id)
+
         fx = int(os.getenv("ICON_FIX_CX", "960"))
         fy = int(os.getenv("ICON_FIX_CY", "323"))
         icon_box = int(os.getenv("ICON_BOX_SIZE", "68"))
@@ -479,7 +641,7 @@ def worker_step(controller) -> Dict[str, Any]:
 
         c["base_level"] = lvl
         c["successes"] = 0
-        c["last_cur"] = lvl  # ← เก็บ ground truth ตอน inspect
+        c["last_cur"] = lvl  # ground truth ตอน inspect
 
         LOG.dev_info(dev_id, f"[{dev_id}] หลัง INSERT baseline level={lvl} digit={c['icon_digit']}")
         _log_web(dev_id, f'หลัง INSERT อ่านระดับ = {_lv_html(lvl, target)} (digit={c["icon_digit"]})')
@@ -512,11 +674,16 @@ def worker_step(controller) -> Dict[str, Any]:
             _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"done_item": True}
 
+        # ถ้าช่องว่างก่อนอัปเกรด (ไอเทมหาย/แตก) → นับว่างและไปต่อ
         if _is_slot_empty(adb, slot_center, slot_roi_size):
-            LOG.dev_info(dev_id, f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้")
+            LOG.dev_info(dev_id, f"[{dev_id}] ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้ + นับช่องว่าง")
             _log_web(dev_id, 'ช่องว่าง (ไอเทมหาย/แตก) → ข้ามชิ้นนี้', "WARN")
+            _inc_empty_and_maybe_stop(controller, dev_id)
             _next_item(dev_id, adb, items, swipe_cfg, c)
             return {"break_at_level": cur}
+
+        # พบไอเทม ⇒ รีเซ็ตตัวนับ
+        _reset_empty_counter(dev_id)
 
         # debounce
         last = c.get("last_action_ts", 0.0)
@@ -542,13 +709,17 @@ def worker_step(controller) -> Dict[str, Any]:
         before_digit = c.get("icon_digit")
 
         def _judge_once(tag: str) -> Optional[bool]:
-            # ช่องว่างหลัง tap → ข้ามชิ้น
+            # ช่องว่างหลัง tap → ข้ามชิ้น (นับว่าง)
             if _is_slot_empty(adb, slot_center, slot_roi_size):
-                LOG.dev_info(dev_id, f"[{dev_id}] ช่องว่างหลัง tap → ข้ามชิ้น")
+                LOG.dev_info(dev_id, f"[{dev_id}] ช่องว่างหลัง tap → ข้ามชิ้น + นับช่องว่าง")
                 _log_web(dev_id, 'ช่องว่างหลัง tap → ข้ามชิ้น', "WARN")
+                _inc_empty_and_maybe_stop(controller, dev_id)
                 _next_item(dev_id, adb, items, swipe_cfg, c)
                 out["break_at_level"] = prev_cur
                 return True
+
+            # พบไอเทม ⇒ รีเซ็ตตัวนับ
+            _reset_empty_counter(dev_id)
 
             # อ่านระดับเชิงตัวเลขก่อน (ถ้าได้จะใช้ตัดสินตามกติกา)
             raw_after = _read_level_from_icon_topright(adb, (fx, fy), box_size=icon_box)
